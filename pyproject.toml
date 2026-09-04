@@ -1,0 +1,38 @@
+[project]
+name = "trade-thesis"
+version = "0.1.0"
+description = "Public trade-idea journal with machine-checked outcomes and an options expression selector."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0,<3",
+  "alembic>=1.13",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2.7,<3",
+  "pydantic-settings>=2.3",
+  "httpx>=0.27",
+  "anthropic>=0.40",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "respx>=0.21", "ruff>=0.5"]
+
+# Vercel loads the whole FastAPI app as one Python function from this entrypoint.
+[tool.vercel]
+entrypoint = "api.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["api/tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]

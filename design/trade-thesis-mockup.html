@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Thesis</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0d12; --ink:#eef2f6; --ink-2:#a9b4c0; --ink-3:#5f6b78;
+  --rule:rgba(255,255,255,.08); --rule-2:rgba(255,255,255,.14);
+  --panel:rgba(255,255,255,.025);
+  --amber:#f2b632; --amber-dim:rgba(242,182,50,.16);
+  --green:#3ddc84; --red:#ff5e5b; --blue:#5aa9ff;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;color:var(--ink);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(1200px 500px at 70% -10%,rgba(242,182,50,.07),transparent 60%),var(--bg)}
+h1,h2,h3{font-family:"Space Grotesk",sans-serif;font-weight:600;letter-spacing:-.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.g{color:var(--green)}.r{color:var(--red)}.b{color:var(--blue)}.a{color:var(--amber)}.m{color:var(--ink-2)}.f{color:var(--ink-3)}
+button{font:inherit}
+
+/* chrome */
+.top{display:flex;align-items:center;height:64px;padding:0 40px;gap:36px;border-bottom:1px solid var(--rule)}
+.wordmark{font-family:"Space Grotesk";font-weight:700;font-size:17px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.wordmark::before{content:"";width:9px;height:9px;background:var(--amber);border-radius:2px;transform:rotate(45deg)}
+.nav{display:flex;gap:26px}
+.nav button{background:none;border:0;color:var(--ink-3);padding:0;cursor:pointer;font-size:14px;position:relative}
+.nav button.on{color:var(--ink)}
+.nav button.on::after{content:"";position:absolute;left:0;right:0;bottom:-23px;height:2px;background:var(--amber)}
+.nav button:focus-visible{outline:2px solid var(--amber);outline-offset:4px}
+.sp{flex:1}
+.regime{font-size:13px;color:var(--ink-2)}
+.regime b{color:var(--ink);font-weight:500;margin-left:6px}
+.regime i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:8px;vertical-align:1px}
+.cta{background:var(--amber);color:#1b1300;border:0;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer}
+.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule-2);border-radius:6px;padding:9px 16px;cursor:pointer}
+.cta:focus-visible,.ghost:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
+.wrap{max-width:1240px;margin:0 auto;padding:44px 40px 80px}
+.screen{display:none}.screen.on{display:block}
+@media (prefers-reduced-motion:no-preference){.screen.on{animation:in .22s ease-out}@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
+
+/* ===== Ledger ===== */
+.lede{display:grid;grid-template-columns:1.25fr 1fr;gap:56px;align-items:end;padding-bottom:40px;border-bottom:1px solid var(--rule)}
+.lede h1{font-size:40px;line-height:1.12;font-weight:500;max-width:22ch}
+.lede h1 em{font-style:normal;font-weight:700}
+.lede p{margin:18px 0 0;color:var(--ink-2);max-width:56ch}
+.record{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.record>div{padding:0 22px 6px 0}
+.record .n{font-family:"Space Grotesk";font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1}
+.record .k{color:var(--ink-3);font-size:13px;margin-top:8px}
+.record .k b{color:var(--ink-2);font-weight:500}
+
+.sec{display:flex;align-items:baseline;gap:18px;margin:44px 0 14px}
+.sec h2{font-size:20px}
+.chips{display:flex;gap:6px;margin-left:8px}
+.chips span{font-size:12.5px;color:var(--ink-3);padding:3px 10px;border-radius:999px;cursor:pointer}
+.chips span.on{color:var(--ink);background:var(--panel);box-shadow:inset 0 0 0 1px var(--rule-2)}
+
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:500;font-size:12.5px;color:var(--ink-3);padding:0 14px 10px 0;border-bottom:1px solid var(--rule-2)}
+td{padding:16px 14px 16px 0;border-bottom:1px solid var(--rule);vertical-align:middle}
+tr[role=link]{cursor:pointer}
+tr[role=link]:hover td{background:linear-gradient(90deg,var(--panel),transparent)}
+.sym{font-family:"IBM Plex Mono";font-weight:500;font-size:15px}
+.sub{display:block;color:var(--ink-3);font-size:12.5px;margin-top:2px}
+.thesis{color:var(--ink-2);max-width:38ch;font-size:14px}
+.prog{width:150px}
+.prog .t{height:3px;background:var(--rule-2);position:relative;border-radius:2px}
+.prog .t i{position:absolute;left:0;top:0;bottom:0;background:var(--blue);border-radius:2px}
+.prog .t i.g{background:var(--green)}.prog .t i.r{background:var(--red)}
+.prog .t em{position:absolute;right:-1px;top:-4px;width:2px;height:11px;background:var(--amber)}
+.prog small{display:block;color:var(--ink-3);font-size:12px;margin-top:6px;font-family:"IBM Plex Mono"}
+.st{font-size:13px;display:inline-flex;align-items:center;gap:7px}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pnl{text-align:right;font-family:"IBM Plex Mono";font-size:14.5px}
+.pnl small{display:block;color:var(--ink-3);font-size:11.5px}
+.tag{font-size:11.5px;color:var(--amber);border:1px solid var(--amber-dim);background:var(--amber-dim);padding:1px 7px;border-radius:4px;margin-left:6px;vertical-align:1px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:52px}
+.matrix{display:grid;grid-template-columns:120px 1fr 1fr;grid-template-rows:auto 1fr 1fr;gap:8px;margin-top:16px}
+.matrix .h{color:var(--ink-3);font-size:12.5px;align-self:end;padding-bottom:4px}
+.matrix .rh{color:var(--ink-3);font-size:12.5px;align-self:center}
+.cell{padding:18px;border-radius:8px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--rule)}
+.cell .n{font-family:"Space Grotesk";font-size:26px;font-weight:600;letter-spacing:-.02em}
+.cell .d{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+.cell.hot{box-shadow:inset 0 0 0 1px rgba(242,182,50,.55);background:linear-gradient(180deg,var(--amber-dim),var(--panel))}
+.bars{margin-top:16px;display:grid;gap:12px}
+.bar{display:grid;grid-template-columns:110px 1fr 54px;gap:14px;align-items:center;font-size:13.5px}
+.bar .k{color:var(--ink-2)}
+.bar .t{height:6px;background:var(--rule);border-radius:3px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--ink-2)}
+.bar .v{text-align:right;font-family:"IBM Plex Mono"}
+.note{color:var(--ink-3);font-size:13px;margin-top:14px;max-width:52ch}
+
+/* ===== New thesis ===== */
+.compose{display:grid;grid-template-columns:1.15fr .85fr;gap:56px}
+.compose h1{font-size:30px;font-weight:500;margin-bottom:6px}
+.compose .lead{color:var(--ink-2);margin:0 0 22px;max-width:52ch}
+textarea{width:100%;min-height:210px;background:transparent;border:0;border-bottom:1px solid var(--rule-2);color:var(--ink);padding:0 0 14px;font:18px/1.6 "IBM Plex Sans";resize:vertical}
+textarea:focus{outline:none;border-bottom-color:var(--amber)}
+.ctx{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:32px;border-top:1px solid var(--rule);padding-top:18px}
+.ctx .k{color:var(--ink-3);font-size:12.5px}
+.ctx .v{font-family:"IBM Plex Mono";font-size:15px;margin-top:4px}
+.parsed h3{font-size:13px;color:var(--ink-3);font-weight:500;margin-bottom:6px;font-family:"IBM Plex Sans"}
+.fld{display:grid;grid-template-columns:140px 1fr;gap:14px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:center}
+.fld label{color:var(--ink-3);font-size:13.5px}
+.fld .v{font-family:"IBM Plex Mono";font-size:14px}
+.fld .q{color:var(--amber);font-family:"IBM Plex Sans";font-size:14px}
+.fld input,.fld select{background:transparent;border:0;border-bottom:1px solid var(--rule-2);color:var(--ink);font:14px "IBM Plex Mono";padding:4px 0;width:100%}
+.fld input:focus,.fld select:focus{outline:none;border-bottom-color:var(--amber)}
+.fld select{font-family:"IBM Plex Sans"}
+.acts{display:flex;gap:10px;margin-top:26px}
+
+/* ===== Options ===== */
+.ohead{display:grid;grid-template-columns:1.1fr .9fr;gap:56px;align-items:start;padding-bottom:34px;border-bottom:1px solid var(--rule)}
+.ohead .eyebrow{color:var(--ink-3);font-size:13.5px;margin-bottom:10px}
+.ohead .eyebrow b{color:var(--ink);font-weight:500;font-family:"IBM Plex Mono"}
+.ohead h1{font-size:34px;font-weight:500;line-height:1.15}
+.ohead h1 span{color:var(--amber);font-weight:700}
+.ohead p{color:var(--ink-2);margin:16px 0 0;max-width:58ch}
+.ohead .shares{padding:20px 22px;border-radius:8px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--rule)}
+.ohead .shares .k{color:var(--ink-3);font-size:12.5px}
+.ohead .shares .row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--rule);font-size:14px}
+.ohead .shares .row:last-child{border-bottom:0}
+.ohead .shares .row span:last-child{font-family:"IBM Plex Mono"}
+
+.cands{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:20px;margin-top:34px;align-items:start}
+.cand{padding:24px;border-radius:10px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--rule)}
+.cand.best{box-shadow:inset 0 0 0 1px rgba(242,182,50,.6)}
+.cand .rank{font-size:12px;color:var(--ink-3);margin-bottom:12px}
+.cand.best .rank{color:var(--amber)}
+.cand .name{font-family:"IBM Plex Mono";font-size:18px;font-weight:500}
+.cand .kind{color:var(--ink-3);font-size:13px;margin-top:3px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:7px 16px;margin-top:18px;font-size:13.5px}
+.kv span:nth-child(odd){color:var(--ink-3)}
+.kv span:nth-child(even){font-family:"IBM Plex Mono";text-align:right}
+.kv .big{font-size:22px;font-family:"Space Grotesk";font-weight:600;letter-spacing:-.02em}
+.why{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--rule);font-size:13.5px;color:var(--ink-2)}
+.heat{margin-top:20px}
+.heat .cap{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-3);margin-bottom:8px}
+.heat table{border-collapse:separate;border-spacing:3px;width:100%}
+.heat th{border:0;padding:0 0 4px;font-family:"IBM Plex Mono";font-size:11px;color:var(--ink-3);text-align:center}
+.heat th:first-child{text-align:right;padding-right:6px}
+.heat td{border:0;padding:0;height:26px;border-radius:3px;font-family:"IBM Plex Mono";font-size:11px;text-align:center;color:#0a0d12}
+.heat td.y{text-align:right;color:var(--ink-3);padding-right:6px;background:transparent;width:44px}
+.heat td.tg{outline:2px solid var(--amber);outline-offset:-2px}
+.take{margin-top:20px;width:100%}
+
+.pay{margin-top:40px}
+.pay .sec{margin:0 0 10px}
+.pay svg{width:100%;height:220px;display:block}
+.leg{display:flex;gap:22px;font-size:12.5px;color:var(--ink-3);margin-top:8px}
+.leg i{display:inline-block;width:16px;height:2px;vertical-align:middle;margin-right:7px}
+
+@media (max-width:960px){
+  .top{padding:0 20px}.nav{display:none}.wrap{padding:28px 20px 60px}
+  .lede,.grid2,.compose,.ohead{grid-template-columns:1fr;gap:28px}
+  .cands{grid-template-columns:1fr}.lede h1{font-size:30px}.record .n{font-size:28px}
+  .thesis{display:none}.ctx{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="wordmark">Trade Thesis</div>
+  <div class="nav">
+    <button class="on" data-go="ledger">Ledger</button>
+    <button data-go="new">New thesis</button>
+    <button data-go="options">Expression</button>
+    <button data-go="ledger">Review</button>
+  </div>
+  <div class="sp"></div>
+  <div class="regime"><i></i>Radar regime<b>Goldilocks · 64%</b></div>
+  <button class="cta" onclick="go('new')" style="margin-left:22px">New thesis</button>
+</div>
+
+<div class="wrap">
+
+<!-- ================= LEDGER ================= -->
+<section class="screen on" id="ledger">
+  <div class="lede">
+    <div>
+      <h1>Twenty-seven ideas since June. Right on direction <em>63%</em> of the time. The option beat the thesis in <em>4 of 11</em> trades.</h1>
+      <p>Every idea is written before the trade, resolved by the tape, and scored on two things separately: was the call right, and did the expression capture it.</p>
+    </div>
+    <div class="record">
+      <div><div class="n">41<span class="f" style="font-size:20px">%</span></div><div class="k">hit full target inside window</div></div>
+      <div><div class="n g">+8.4<span class="f" style="font-size:20px">%</span></div><div class="k">paper return on <b>assigned capital</b></div></div>
+      <div><div class="n">6</div><div class="k"><b>open</b>, two resolve this week</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Ideas</h2>
+    <div class="chips"><span class="on">All</span><span>Open</span><span>Right</span><span>Wrong</span><span>Paper</span><span>With option</span></div>
+  </div>
+  <table>
+    <thead><tr><th>Instrument</th><th>Thesis</th><th>Condition</th><th>Progress</th><th>Window</th><th style="text-align:right">Underlying</th><th style="text-align:right">Option</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr role="link" onclick="go('options')">
+        <td><span class="sym">USO</span><span class="sub">Crude oil ETF</span></td>
+        <td class="thesis">Inventories built twice, failed at the 200-day; breaks the August low.</td>
+        <td class="mono" style="font-size:13.5px">close ≤ 68.50</td>
+        <td class="prog"><div class="t"><i style="width:58%"></i><em></em></div><small>70.05 · 58% of the way</small></td>
+        <td class="m" style="font-size:13.5px">Sep 2 – 26</td>
+        <td class="pnl g">+2.8%</td>
+        <td class="pnl g">+19%<small>Oct 70/66 put spread</small></td>
+        <td><span class="st b">Open</span></td>
+      </tr>
+      <tr role="link">
+        <td><span class="sym">MU</span><span class="sub">Micron</span></td>
+        <td class="thesis">HBM pricing power into earnings; street too low on gross margin.</td>
+        <td class="mono" style="font-size:13.5px">touch ≥ 142</td>
+        <td class="prog"><div class="t"><i class="g" style="width:100%"></i></div><small>hit day 9 of 21</small></td>
+        <td class="m" style="font-size:13.5px">Aug 4 – 25</td>
+        <td class="pnl g">+11.2%</td>
+        <td class="pnl g">+164%<small>Sep 135 call</small></td>
+        <td><span class="st g">Right</span></td>
+      </tr>
+      <tr role="link">
+        <td><span class="sym">IBM</span><span class="sub">IBM</span></td>
+        <td class="thesis">25% gap-down on a preliminary miss overshoots; mean reversion to 230.</td>
+        <td class="mono" style="font-size:13.5px">close ≥ 230</td>
+        <td class="prog"><div class="t"><i style="width:64%"></i><em></em></div><small>expired at 224.40</small></td>
+        <td class="m" style="font-size:13.5px">Jul 25 – Aug 15</td>
+        <td class="pnl g">+3.6%</td>
+        <td class="pnl r">−100%<small>Aug 235 call, no trade advised</small></td>
+        <td><span class="st r">Expired</span><span class="tag">direction right</span></td>
+      </tr>
+      <tr role="link">
+        <td><span class="sym">XLE</span><span class="sub">Energy vs SPY</span></td>
+        <td class="thesis">Energy earnings revisions turning up while tech decelerates.</td>
+        <td class="mono" style="font-size:13.5px">XLE − SPY ≥ +3%</td>
+        <td class="prog"><div class="t"><i style="width:31%"></i><em></em></div><small>+0.9% of +3.0%</small></td>
+        <td class="m" style="font-size:13.5px">Aug 18 – Oct 17</td>
+        <td class="pnl g">+0.9%</td>
+        <td class="pnl f">—</td>
+        <td><span class="st b">Open</span><span class="tag">paper</span></td>
+      </tr>
+      <tr role="link">
+        <td><span class="sym">LMT</span><span class="sub">Lockheed Martin</span></td>
+        <td class="thesis">F-35 sustainment cuts in the budget markup; multiple compresses.</td>
+        <td class="mono" style="font-size:13.5px">close ≤ 425</td>
+        <td class="prog"><div class="t"><i class="r" style="width:22%"></i></div><small>stop 468 hit, day 6</small></td>
+        <td class="m" style="font-size:13.5px">Jul 21 – Aug 22</td>
+        <td class="pnl r">−4.1%</td>
+        <td class="pnl f">—<small>unaffordable, shares used</small></td>
+        <td><span class="st r">Wrong</span></td>
+      </tr>
+      <tr role="link">
+        <td><span class="sym">FXY</span><span class="sub">Yen ETF</span></td>
+        <td class="thesis">BoJ normalizes faster than priced; carry unwind resumes.</td>
+        <td class="mono" style="font-size:13.5px">move ≥ +4%</td>
+        <td class="prog"><div class="t"><i style="width:45%"></i><em></em></div><small>+1.8% of +4.0%</small></td>
+        <td class="m" style="font-size:13.5px">Aug 27 – Nov 27</td>
+        <td class="pnl g">+1.8%</td>
+        <td class="pnl g">+6%<small>Dec 62 call</small></td>
+        <td><span class="st b">Open</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="grid2">
+    <div>
+      <h2 style="font-size:20px">Thesis versus expression</h2>
+      <div class="matrix">
+        <div></div><div class="h">Option won</div><div class="h">Option lost</div>
+        <div class="rh">Thesis right</div>
+        <div class="cell hot"><div class="n">4</div><div class="d">avg +71% on premium</div></div>
+        <div class="cell"><div class="n">3</div><div class="d">right call, wrong contract. Avg −38%</div></div>
+        <div class="rh">Thesis wrong</div>
+        <div class="cell"><div class="n">1</div><div class="d">lucky, not skilled</div></div>
+        <div class="cell"><div class="n">3</div><div class="d">avg −52%, all stopped</div></div>
+      </div>
+      <p class="note">Three trades where the call was right and the option still lost. Two were short-dated, one was bought at the 80th IV percentile. The selector now penalizes both.</p>
+    </div>
+    <div>
+      <h2 style="font-size:20px">Direction hit rate by Radar regime</h2>
+      <div class="bars">
+        <div class="bar"><span class="k">Goldilocks</span><div class="t"><i style="width:71%;background:var(--green)"></i></div><span class="v">71%</span></div>
+        <div class="bar"><span class="k">Overheating</span><div class="t"><i style="width:50%"></i></div><span class="v">50%</span></div>
+        <div class="bar"><span class="k">Stagflation</span><div class="t"><i style="width:40%;background:var(--red)"></i></div><span class="v">40%</span></div>
+        <div class="bar"><span class="k">Recession</span><div class="t"></div><span class="v f">n/a</span></div>
+      </div>
+      <p class="note">Regime is stamped at logging time from Macro Regime Radar, so the split reflects what the model said when the idea was written, not hindsight.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= NEW THESIS ================= -->
+<section class="screen" id="new">
+  <div class="compose">
+    <div>
+      <h1>Write the idea before the trade.</h1>
+      <p class="lead">Plain English is fine. The parser fills the structured fields and asks for whatever it can't find. Nothing is inferred that you didn't say.</p>
+      <textarea>Oil looks heavy. OPEC+ keeps adding barrels, US inventories built two weeks in a row, and USO just failed at the 200-day. I think it breaks the August low around 68.50 within the next three weeks. If it closes back above 74 the idea is wrong.</textarea>
+      <div class="ctx">
+        <div><div class="k">USO last close</div><div class="v">72.10</div></div>
+        <div><div class="k">20-day realized vol</div><div class="v">31%</div></div>
+        <div><div class="k">Distance to target</div><div class="v r">−5.0%</div></div>
+        <div><div class="k">Regime at log</div><div class="v">Goldilocks 64%</div></div>
+      </div>
+    </div>
+    <div class="parsed">
+      <h3>Parsed from your thesis</h3>
+      <div class="fld"><label>Instrument</label><div class="v">USO <span class="f">· crude oil ETF</span></div></div>
+      <div class="fld"><label>Direction</label><div class="v r">Down</div></div>
+      <div class="fld"><label>Success</label><div class="v">close ≤ 68.50</div></div>
+      <div class="fld"><label>Invalidation</label><div class="v">close ≥ 74.00 <span class="f">· closes as wrong</span></div></div>
+      <div class="fld"><label>Window</label><div class="v">Sep 4 → Sep 25 <span class="f">· 21d</span></div></div>
+      <div class="fld"><label>Catalyst</label><div class="q">Is there a dated one? EIA weekly, OPEC meeting?</div></div>
+      <div class="fld"><label>Conviction</label><div class="q">Rough odds you'd put on it?</div></div>
+      <div class="fld"><label>Capital for idea</label><input value="1,000" aria-label="Capital assigned"></div>
+      <div class="fld"><label>Type</label><select aria-label="Idea type"><option>Real trade</option><option>Paper idea</option></select></div>
+      <div class="fld"><label>Tags</label><div class="v f" style="font-family:'IBM Plex Sans'">energy, macro, technical break</div></div>
+      <div class="acts">
+        <button class="cta" onclick="go('options')">Log and find an expression</button>
+        <button class="ghost" onclick="go('ledger')">Log only</button>
+      </div>
+      <p class="note">Capital is per idea. P&amp;L is the paper return on that amount, never your live account.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= OPTIONS / EXPRESSION ================= -->
+<section class="screen" id="options">
+  <div class="ohead">
+    <div>
+      <div class="eyebrow">USO short · target <b>68.50</b> by <b>Sep 25</b> · <b>$1,000</b> assigned · chain as of Sep 3 close</div>
+      <h1>Best expression: <span>Oct 17 70 / 66 put spread</span></h1>
+      <p>An outright put spends 62% of your move just reaching breakeven, and USO implied vol is at the 71st percentile of its year. The spread halves the cost, keeps nearly all the payoff up to your target, and leaves three weeks past the window as cushion. No dated catalyst inside the window.</p>
+    </div>
+    <div class="shares">
+      <div class="k">Same move, other vehicles</div>
+      <div class="row"><span>SCO (2x inverse), $1,000</span><span class="g">+10.2%</span></div>
+      <div class="row"><span>Short USO shares, $1,000</span><span class="g">+5.0%</span></div>
+      <div class="row"><span>70/66 put spread, $426 at risk</span><span class="g">+152%</span></div>
+      <div class="row"><span>Verdict</span><span class="a">Trade the spread</span></div>
+    </div>
+  </div>
+
+  <div class="cands">
+    <div class="cand best">
+      <div class="rank">Best fit</div>
+      <div class="name">USO 17 Oct 70p / 66p</div>
+      <div class="kind">Put debit spread · Tier 2 eligible</div>
+      <div class="kv">
+        <span>Return at target</span><span class="big g">+152%</span>
+        <span>Debit</span><span>1.42</span>
+        <span>Breakeven</span><span>68.58</span>
+        <span>Contracts for $1,000</span><span>3 · $426 at risk</span>
+        <span>Market-implied P(profit)</span><span>38%</span>
+        <span>Theta you can afford</span><span>17 days at spot</span>
+        <span>Bid/ask width</span><span>4.1%</span>
+      </div>
+      <div class="heat">
+        <div class="cap"><span>Return on premium, by price and date</span><span>IV held at 33%</span></div>
+        <table>
+          <tr><th></th><th>Sep 4</th><th>Sep 11</th><th>Sep 18</th><th>Sep 25</th><th>Oct 17</th></tr>
+          <tr><td class="y">66.0</td><td style="background:#3ddc84">+118</td><td style="background:#3ddc84">+134</td><td style="background:#3ddc84">+151</td><td style="background:#3ddc84">+168</td><td style="background:#3ddc84">+182</td></tr>
+          <tr><td class="y">68.5</td><td style="background:#7ee2a5">+61</td><td style="background:#7ee2a5">+77</td><td style="background:#5fdf96">+95</td><td class="tg" style="background:#5fdf96">+120</td><td style="background:#3ddc84">+152</td></tr>
+          <tr><td class="y">70.0</td><td style="background:#c9e5d4">+22</td><td style="background:#d8e6dc">+15</td><td style="background:#e6dfd8">−2</td><td style="background:#f0bfb8">−23</td><td style="background:#ff8a86">−63</td></tr>
+          <tr><td class="y">72.1</td><td style="background:#f2d6d2">−11</td><td style="background:#f2bcb8">−28</td><td style="background:#ff9a96">−49</td><td style="background:#ff7773">−71</td><td style="background:#ff5e5b">−100</td></tr>
+          <tr><td class="y">74.0</td><td style="background:#ffa29e">−34</td><td style="background:#ff8582">−58</td><td style="background:#ff6c69">−81</td><td style="background:#ff5e5b">−95</td><td style="background:#ff5e5b">−100</td></tr>
+        </table>
+      </div>
+      <p class="why">Breakeven sits at your target with cushion past the window, and the short 66 put pays for most of the vol premium you'd otherwise eat. You give up the tail if crude truly breaks.</p>
+      <button class="cta take">Take this expression</button>
+    </div>
+
+    <div class="cand">
+      <div class="rank">Second</div>
+      <div class="name">USO 17 Oct 70p</div>
+      <div class="kind">Long put · Tier 2 eligible</div>
+      <div class="kv">
+        <span>Return at target</span><span class="big">+46%</span>
+        <span>Premium</span><span>2.85</span>
+        <span>Breakeven</span><span>67.15</span>
+        <span>Contracts for $1,000</span><span>3 · $855 at risk</span>
+        <span>Market-implied P(profit)</span><span>31%</span>
+        <span>Theta you can afford</span><span>9 days at spot</span>
+        <span>IV percentile, 1y</span><span>71st</span>
+      </div>
+      <p class="why">Target clears breakeven by only $1.35, so you need an overshoot to get paid. Uncapped upside is the only argument for it.</p>
+      <button class="ghost take">Take this instead</button>
+    </div>
+
+    <div class="cand">
+      <div class="rank">Third</div>
+      <div class="name">USO 26 Sep 71p</div>
+      <div class="kind">Long put, expires at window end · Tier 2 eligible</div>
+      <div class="kv">
+        <span>Return at target</span><span class="big">+56%</span>
+        <span>Premium</span><span>1.60</span>
+        <span>Breakeven</span><span>69.40</span>
+        <span>Contracts for $1,000</span><span>6 · $960 at risk</span>
+        <span>Market-implied P(profit)</span><span>29%</span>
+        <span>Theta you can afford</span><span>5 days at spot</span>
+        <span>Bid/ask width</span><span class="r">7.8%</span>
+      </div>
+      <p class="why">No time cushion. Right but a week late and it expires worthless. Thin strike, wide market on exit.</p>
+      <button class="ghost take">Take this instead</button>
+    </div>
+  </div>
+
+  <div class="pay">
+    <div class="sec"><h2>Payoff at expiry</h2><span class="f" style="font-size:13px">amber line is your target, grey is spot</span></div>
+    <svg viewBox="0 0 800 220" role="img" aria-label="Payoff at expiry for three candidate structures">
+      <line x1="50" y1="180" x2="770" y2="180" stroke="rgba(255,255,255,.14)"/>
+      <line x1="50" y1="125" x2="770" y2="125" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 5"/>
+      <g font-family="IBM Plex Mono" font-size="11" fill="#5f6b78">
+        <text x="82" y="200">62</text><text x="200" y="200">65</text><text x="320" y="200">68</text>
+        <text x="440" y="200">71</text><text x="560" y="200">74</text><text x="680" y="200">77</text>
+        <text x="20" y="129">0</text>
+      </g>
+      <line x1="340" y1="20" x2="340" y2="180" stroke="#f2b632" stroke-dasharray="4 5"/>
+      <line x1="484" y1="20" x2="484" y2="180" stroke="#5f6b78" stroke-dasharray="2 5"/>
+      <polyline points="50,52 240,52 400,160 770,160" fill="none" stroke="#f2b632" stroke-width="2.4"/>
+      <polyline points="50,28 400,168 770,168" fill="none" stroke="#5aa9ff" stroke-width="1.8"/>
+      <polyline points="50,47 440,152 770,152" fill="none" stroke="#5f6b78" stroke-width="1.6" stroke-dasharray="5 4"/>
+    </svg>
+    <div class="leg">
+      <span><i style="background:#f2b632"></i>70/66 put spread</span>
+      <span><i style="background:#5aa9ff"></i>Oct 70 put</span>
+      <span><i style="background:#5f6b78"></i>Sep 71 put</span>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===id));
+  window.scrollTo({top:0});
+}
+document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
+</script>
+</body>
+</html>
