@@ -5,16 +5,27 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth import WriteAuth, is_writer
 from api.db.models import Idea, Instrument
-from api.db.schemas import IdeaClose, IdeaCreate, IdeaDetail, IdeaOut, IdeaUpdate, RegimeBucket, StatsOut
+from api.db.schemas import (
+    IdeaClose,
+    IdeaCreate,
+    IdeaDetail,
+    IdeaOut,
+    IdeaUpdate,
+    ParseRequest,
+    ParseResponse,
+    RegimeBucket,
+    StatsOut,
+)
 from api.db.session import get_db
 from api.routers.system import load_settings
-from api.services import ledger, prices
+from api.services import ledger, parser, prices
 from api.services.eodhd import EODHDClient, EODHDError
 from api.services.radar import regime_stamp
 
@@ -122,6 +133,19 @@ def stats(request: Request, db: Session = Depends(get_db)) -> StatsOut:
         resolving_soon=[ledger.to_idea_out(i, hide, today) for i in soon[:10]],
         dollars_hidden=hide,
     )
+
+
+@router.post("/ideas/parse", response_model=ParseResponse, dependencies=[WriteAuth])
+def parse_idea(body: ParseRequest, db: Session = Depends(get_db)) -> ParseResponse:
+    """Prose -> thesis schema via Anthropic, symbols verified on EODHD, context numbers from stored snapshots."""
+    try:
+        return ParseResponse(**parser.parse_thesis(db, body.thesis_text))
+    except RuntimeError as exc:  # missing key / empty structured output
+        raise HTTPException(503, str(exc)) from exc
+    except anthropic.APIStatusError as exc:
+        raise HTTPException(502, f"Anthropic API error {exc.status_code}: {exc.message}") from exc
+    except anthropic.APIConnectionError as exc:
+        raise HTTPException(502, f"Anthropic API unreachable: {exc}") from exc
 
 
 @router.get("/ideas/{idea_id}", response_model=IdeaDetail)

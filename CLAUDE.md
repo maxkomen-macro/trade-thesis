@@ -56,7 +56,8 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
 
 - `api/` FastAPI + SQLAlchemy 2 + Alembic + Pydantic v2 + httpx + anthropic. Entry `api/main.py`.
   `api/db/` models/schemas/session; `api/services/` eodhd (client), prices (snapshot cache), rules (rule schema),
-  resolver (pure decision engine), ledger (DB orchestration + serialization), radar (regime store);
+  resolver (pure decision engine), ledger (DB orchestration + serialization), radar (regime store), parser (Anthropic
+  structured output -> thesis schema, EODHD symbol verification, deterministic context tile);
   `api/routers/` system/jobs/ideas/instruments; `api/scripts/` probe_eodhd, seed_ideas; `api/tests/` pytest
   (no network; in-memory SQLite via `JSONType = JSON().with_variant(JSONB, "postgresql")`, `TagsType` likewise).
 - `web/` Vite + React 18 + TS + Tailwind v4 (`@tailwindcss/vite`) + React Query + Lightweight Charts 5.
@@ -92,6 +93,20 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
   sends GET); `POST /api/jobs/refresh-prices` is the Settings button. `hide_dollars` masks `capital_assigned`
   and `hypothetical_pnl_abs` for non-writers; the write token is sent on every request so the owner sees dollars.
 
+## Parser (api/services/parser.py, tested in api/tests/test_parser.py with the model call replaced)
+
+- `POST /api/ideas/parse` (write-protected) → `ParseResponse`. Model `claude-sonnet-4-6` via `client.messages.parse`
+  with a Pydantic `output_format` (`ParsedThesisLLM`), so the model can only emit the schema. No thinking, no prefill.
+- The model never sees or produces market numbers. It returns queries/guesses for the instrument and benchmark;
+  the server verifies them against EODHD search (accept an exact ticker match on the US exchange or a single hit,
+  otherwise return `symbol_candidates` plus a question). Suggested rules carry `suggested: true`.
+- Missing target / stop / window / conviction stay null and become `questions: [{field, question}]`. The New Thesis
+  page shows them inline in amber; nothing can be saved without a success rule, a window end, and a symbol.
+- Context tile is computed from stored snapshots: last close (delayed quote stored as a `realtime` snapshot), 20-day
+  realized vol (annualized std of log returns over the last 20 closes), distance to target, latest pushed regime.
+  EODHD failures appear in `context.errors`; numbers are never substituted.
+- Saving posts the edited fields to `POST /api/ideas` with `parsed_json` (model id, timestamp, raw LLM output).
+
 ## Commands
 
 `make setup` · `make dev` (API + web) · `make api` · `make web` · `make migrate` · `make migration m="msg"` ·
@@ -115,5 +130,9 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   windows/rules flagged `seed: true` (MU expired wrong, SCO expired wrong, LMT right).
 - **Open items for the owner:** replace the seed placeholders (windows, targets, stops) via PATCH or the UI later;
   wire Radar's GitHub Action to `POST /api/jobs/regime` once deployed.
-- **Next: Phase 3 (parser)** — Anthropic-backed `POST /api/ideas/parse`, New Thesis page with the questions flow,
-  symbol verification via EODHD search; regime stamping already reads `regime_snapshots`.
+- **Phase 3 (parser): built 2026-09-05, uncommitted pending owner review.** `POST /api/ideas/parse` with structured
+  outputs on `claude-sonnet-4-6`, EODHD symbol verification with candidates, deterministic context tile, New Thesis
+  page laid out per the mockup's compose screen (prose + context tile left, editable parsed fields with amber
+  questions right, "Log and find an expression" / "Log only"). 7 parser tests with the model call stubbed.
+- **Next: Phase 4 (review + settings + deploy)** — Review page breakdowns, settings editing, hide-dollars toggle,
+  Vercel deploy (confirm Services on Hobby or split into two projects), cron confirmed firing.

@@ -280,3 +280,36 @@ class JobSummary(BaseModel):
     bars_added: int = 0
     resolved: list[dict[str, Any]] = Field(default_factory=list)
     errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ParseRequest(BaseModel):
+    thesis_text: str = Field(min_length=10, max_length=8000)
+
+
+class ParseResponse(BaseModel):
+    """Everything the New Thesis page needs: proposed fields, open questions, and the deterministic context tile."""
+
+    thesis_text: str
+    title: str
+    instrument: dict[str, Any] | None
+    symbol: str | None
+    symbol_candidates: list[dict[str, Any]]
+    instrument_query: str
+    direction: str
+    benchmark_symbol: str | None
+    benchmark_candidates: list[dict[str, Any]]
+    success_rule_json: dict[str, Any] | None
+    success_rule_text: str | None
+    invalidation_rule_json: dict[str, Any] | None
+    invalidation_rule_text: str | None
+    invalidation_is_note_only: bool
+    window_start: str
+    window_end: str | None
+    catalyst_date: str | None
+    catalyst_note: str | None
+    conviction_pct: float | None
+    tags: list[str]
+    questions: list[dict[str, str]]
+    context: dict[str, Any] | None
+    regime: dict[str, Any]
+    parsed_json: dict[str, Any]

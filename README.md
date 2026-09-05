@@ -11,8 +11,8 @@ broken down by regime.
 
 ## Status
 
-Phases 1 (scaffold + data-source probe) and 2 (ledger core: ideas, price snapshots, resolver, Ledger and
-Idea detail pages) are built. See `CLAUDE.md` → *State of the build* and `docs/eodhd-probe.md`. Options chain access via the EODHD UnicornBay add-on was verified on 2026-09-04, so the options selector
+Phases 1 (scaffold + data-source probe), 2 (ledger core: ideas, price snapshots, resolver, Ledger and Idea
+detail pages) and 3 (Anthropic-backed thesis parser and the New Thesis page) are built. See `CLAUDE.md` → *State of the build* and `docs/eodhd-probe.md`. Options chain access via the EODHD UnicornBay add-on was verified on 2026-09-04, so the options selector
 (Phases 5–6) is unblocked and gated behind `settings.options_enabled`.
 
 ## Stack

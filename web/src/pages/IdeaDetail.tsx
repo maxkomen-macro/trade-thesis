@@ -113,9 +113,13 @@ export function IdeaDetail() {
               </span>
             </Row>
             <Row k="Last">
-              <span className="num">
-                {i.last_price?.toFixed(2) ?? "–"} <span className="text-xs text-muted">{fmtDate(i.last_price_as_of)}</span>
-              </span>
+              {i.last_price === null ? (
+                <span className="text-xs text-muted">{i.status === "open" ? "awaiting the first close inside the window" : "–"}</span>
+              ) : (
+                <span className="num">
+                  {i.last_price.toFixed(2)} <span className="text-xs text-muted">{fmtDate(i.last_price_as_of)}</span>
+                </span>
+              )}
             </Row>
             <Row k="Success">
               <span>{i.success_rule_text}</span>

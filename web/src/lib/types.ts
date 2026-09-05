@@ -150,3 +150,49 @@ export interface JobSummary {
   resolved: Array<Record<string, unknown>>;
   errors: Array<Record<string, unknown>>;
 }
+
+export interface SymbolCandidate {
+  symbol: string;
+  name: string;
+  type: string;
+  previous_close: number | null;
+  previous_close_date: string | null;
+}
+
+export interface ParseContext {
+  symbol: string;
+  last_close: number | null;
+  last_close_at: string | null;
+  last_close_source: string | null;
+  realized_vol_20d_pct: number | null;
+  realized_vol_as_of: string | null;
+  distance_to_target_pct: number | null;
+  errors: Array<Record<string, unknown>>;
+}
+
+export interface ParseResponse {
+  thesis_text: string;
+  title: string;
+  instrument: { id: number; symbol: string; display_name: string; kind: string } | null;
+  symbol: string | null;
+  symbol_candidates: SymbolCandidate[];
+  instrument_query: string;
+  direction: Direction;
+  benchmark_symbol: string | null;
+  benchmark_candidates: SymbolCandidate[];
+  success_rule_json: Record<string, unknown> | null;
+  success_rule_text: string | null;
+  invalidation_rule_json: Record<string, unknown> | null;
+  invalidation_rule_text: string | null;
+  invalidation_is_note_only: boolean;
+  window_start: string;
+  window_end: string | null;
+  catalyst_date: string | null;
+  catalyst_note: string | null;
+  conviction_pct: number | null;
+  tags: string[];
+  questions: Array<{ field: string; question: string }>;
+  context: ParseContext | null;
+  regime: RegimeReadout;
+  parsed_json: Record<string, unknown>;
+}
