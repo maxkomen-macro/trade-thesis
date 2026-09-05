@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import APP_VERSION, settings
-from api.routers import jobs, system
+from api.routers import ideas, instruments, jobs, system
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 # httpx logs full request URLs at INFO, which would put the EODHD api_token into server logs. Never.
@@ -33,6 +33,8 @@ app.add_middleware(
 
 app.include_router(system.router)
 app.include_router(jobs.router)
+app.include_router(ideas.router)
+app.include_router(instruments.router)
 
 
 @app.get("/api", include_in_schema=False)

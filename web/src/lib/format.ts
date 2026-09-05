@@ -55,3 +55,37 @@ export function regimeColor(label: string | null | undefined): string {
       return "var(--color-muted)";
   }
 }
+
+export const STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  right: "Right",
+  wrong: "Wrong",
+  expired: "Expired",
+  closed_manual: "Closed",
+};
+
+export function statusColor(status: string): string {
+  switch (status) {
+    case "right":
+      return "var(--color-right)";
+    case "wrong":
+      return "var(--color-wrong)";
+    case "open":
+      return "var(--color-open)";
+    default:
+      return "var(--color-muted)";
+  }
+}
+
+export const DIRECTION_LABEL: Record<string, string> = {
+  up: "Up",
+  down: "Down",
+  outperform: "Outperform",
+  underperform: "Underperform",
+  range: "Range",
+};
+
+export function pnlColor(v: number | null | undefined): string {
+  if (v === null || v === undefined) return "var(--color-muted)";
+  return v > 0 ? "var(--color-right)" : v < 0 ? "var(--color-wrong)" : "var(--color-muted)";
+}

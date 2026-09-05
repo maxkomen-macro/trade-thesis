@@ -11,8 +11,8 @@ broken down by regime.
 
 ## Status
 
-Phase 1 (scaffold + data-source probe) is complete. See `CLAUDE.md` → *State of the build* and
-`docs/eodhd-probe.md`. Options chain access via the EODHD UnicornBay add-on was verified on 2026-09-04, so the options selector
+Phases 1 (scaffold + data-source probe) and 2 (ledger core: ideas, price snapshots, resolver, Ledger and
+Idea detail pages) are built. See `CLAUDE.md` → *State of the build* and `docs/eodhd-probe.md`. Options chain access via the EODHD UnicornBay add-on was verified on 2026-09-04, so the options selector
 (Phases 5–6) is unblocked and gated behind `settings.options_enabled`.
 
 ## Stack
@@ -28,6 +28,7 @@ cp .env.example .env         # fill EODHD_API_KEY, ANTHROPIC_API_KEY, TT_WRITE_T
 neon link                     # writes DATABASE_URL / DATABASE_URL_UNPOOLED to .env.local
 make setup                    # uv venv + deps, npm install
 make migrate                  # alembic upgrade head
+make seed                     # optional: the owner's three past ideas as paper ideas
 make dev                      # API :8001 + web :5174
 ```
 

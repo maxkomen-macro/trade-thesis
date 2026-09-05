@@ -36,3 +36,6 @@ build:
 
 probe-eodhd:
 	$(PY) -m api.scripts.probe_eodhd
+
+seed:
+	$(PY) -m api.scripts.seed_ideas

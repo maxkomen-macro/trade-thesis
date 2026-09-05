@@ -55,21 +55,47 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
 ## Stack and layout
 
 - `api/` FastAPI + SQLAlchemy 2 + Alembic + Pydantic v2 + httpx + anthropic. Entry `api/main.py`.
-  `api/db/` models/schemas/session, `api/services/` eodhd/radar(regime store)/(parser/resolver/options/pricing),
-  `api/routers/` system/jobs/(ideas/instruments/analyses/settings), `api/tests/` pytest (no network; in-memory
-  SQLite via `JSONType = JSON().with_variant(JSONB, "postgresql")`).
+  `api/db/` models/schemas/session; `api/services/` eodhd (client), prices (snapshot cache), rules (rule schema),
+  resolver (pure decision engine), ledger (DB orchestration + serialization), radar (regime store);
+  `api/routers/` system/jobs/ideas/instruments; `api/scripts/` probe_eodhd, seed_ideas; `api/tests/` pytest
+  (no network; in-memory SQLite via `JSONType = JSON().with_variant(JSONB, "postgresql")`, `TagsType` likewise).
 - `web/` Vite + React 18 + TS + Tailwind v4 (`@tailwindcss/vite`) + React Query + Lightweight Charts 5.
   Tokens live in `web/src/styles/index.css` (`@theme`): bg `#0d1117`, surface `#161b22`, surface-2 `#1c2129`,
   line `#30363d`, accent amber `#f0b429`, right `#2ecc71`, wrong `#e74c3c`, open `#4a9eff`.
   Fonts: Space Grotesk (headings), IBM Plex Sans (body), IBM Plex Mono (numbers/tickers, class `num`).
   Sentence-case labels, no all-caps eyebrows.
-- `alembic/` migrations (`0001_baseline` settings + seeds, `0002_regime_snapshots`). `alembic/env.py` uses the unpooled URL.
-- `design/trade-thesis-mockup.html` — layout reference (owner to supply; not yet in repo).
+- `alembic/` migrations (`0001` settings + seeds, `0002` regime_snapshots, `0003` instruments/ideas/price_snapshots/
+  resolution_events, `0004` ideas.spread_at_window_end_pct). `alembic/env.py` uses the unpooled URL.
+- `design/trade-thesis-mockup.html` — layout reference (arrived 2026-09-04). Match its screens, not a clone of Radar.
+
+## Resolver semantics (api/services/resolver.py, tested in api/tests/test_resolver.py)
+
+- Bars considered: `max(entry_date, window_start) <= as_of <= window_end`. `entry_date` = date of `entry_price_at`.
+- Order per run: invalidation → success → window expiry → `progress` event (one per day, deduped).
+  If stop and target both hit, the earlier date wins; a tie goes to the stop.
+- `level`: first qualifying close (or low/high for touch). `direction`: only once the window is closed (we hold the
+  window-end bar, or today > window_end), right if the signed return at the final bar is > 0. `pct_move`: any close
+  inside the window. `relative`: return spread vs benchmark at any close inside the window (path-dependent, like
+  pct_move). `all_of` hit date = latest child, `any_of` = earliest.
+- Expiry without a hit → `status=expired`, `resolution_reason=expired:direction_right|expired:direction_wrong`,
+  so direction hit rate and target hit rate are separate. `direction_right_of()` in ledger.py derives the flag.
+- P&L = `capital_assigned × signed return`; `down`/`underperform` invert the sign; relative ideas use the spread;
+  `range` has no P&L until an option position exists. Frozen at the resolution bar; marked daily while open.
+- Relative ideas additionally store `spread_at_window_end_pct` (owner decision 2026-09-05): resolution stays
+  path-dependent, but the daily job backfills the window-end spread for ideas that resolved early (writes a
+  `benchmark_update` event) so the detail page shows both numbers.
+- Seed/placeholder ideas (`parsed_json.seed = true`) are excluded from the hero sentence, stat strip, hit rate by
+  regime, and resolving-soon; they appear in the table with a `placeholder` tag. `StatsOut.seed_count` reports them.
+- Manual close (`POST /api/ideas/{id}/close`) → `closed_manual`, reason `manual`, P&L at the latest stored close.
+- Reads never call EODHD. Creation stamps `entry_price` from the delayed quote (stored as a `realtime` snapshot),
+  pulls 45 days of history, and runs the resolver once. `POST/GET /api/jobs/resolve` is the daily job (Vercel Cron
+  sends GET); `POST /api/jobs/refresh-prices` is the Settings button. `hide_dollars` masks `capital_assigned`
+  and `hypothetical_pnl_abs` for non-writers; the write token is sent on every request so the owner sees dollars.
 
 ## Commands
 
 `make setup` · `make dev` (API + web) · `make api` · `make web` · `make migrate` · `make migration m="msg"` ·
-`make test` · `make lint` · `make typecheck` · `make build` · `make probe-eodhd`
+`make test` · `make lint` · `make typecheck` · `make build` · `make probe-eodhd` · `make seed`
 
 ## State of the build
 
@@ -79,8 +105,15 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   Alembic `0001` + `0002` applied (`settings` seeded, `regime_snapshots`), FastAPI with `/api/health`, `/api/status`,
   `/api/regime`, `POST /api/jobs/regime` (Radar push, idempotent), write/cron auth dependencies, EODHD client, regime store, Vite shell with tokens, top bar with regime readout,
   Settings page with connection status, `make dev` working. EODHD probe written to `docs/eodhd-probe.md`: options were 403 at first, then the owner activated the
-  UnicornBay add-on the same day and the re-probe returned 200; `options_enabled` is now true and Phases 5–6 are unblocked. Nothing committed yet (branch `phase-1-scaffold`).
-- **Open items for the owner:** supply `design/trade-thesis-mockup.html` (arriving later); supply three past ideas for
-  the Phase 2 seed; wire Radar's GitHub Action to `POST /api/jobs/regime` once deployed; set Vercel env vars personally.
-- **Next: Phase 2 (ledger core)** — models + migrations for instruments/ideas/price_snapshots/resolution_events,
-  CRUD, price snapshot fetch, resolver for all rule types with fixture tests, cron wiring, Ledger + Idea detail pages.
+  UnicornBay add-on the same day and the re-probe returned 200; `options_enabled` is now true and Phases 5–6 are unblocked. Committed as `13f2c61` on branch `phase-1-scaffold`.
+- **Phase 2 (ledger core): built 2026-09-04, adjusted and committed 2026-09-05.** Migration `0003`, ideas/
+  instruments CRUD, price snapshot cache, resolver for all rule types (18 unit tests on fixture paths), ideas API
+  tests on SQLite with EODHD mocked, `POST/GET /api/jobs/resolve` + `POST /api/jobs/refresh-prices`, Ledger page
+  (stat strip, filters, progress bars, resolving soon, hit rate by regime) and Idea detail (Lightweight Charts price
+  chart with entry/target/stop lines, window shading, event markers, timeline, resolve/close/delete actions).
+  Seeded the owner's three past ideas as paper ideas via `make seed` with real EODHD entry closes and placeholder
+  windows/rules flagged `seed: true` (MU expired wrong, SCO expired wrong, LMT right).
+- **Open items for the owner:** replace the seed placeholders (windows, targets, stops) via PATCH or the UI later;
+  wire Radar's GitHub Action to `POST /api/jobs/regime` once deployed.
+- **Next: Phase 3 (parser)** — Anthropic-backed `POST /api/ideas/parse`, New Thesis page with the questions flow,
+  symbol verification via EODHD search; regime stamping already reads `regime_snapshots`.

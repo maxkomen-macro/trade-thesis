@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, getWriteToken, setWriteToken } from "../lib/api";
 import { fmtDateTime } from "../lib/format";
-import type { ServiceStatus, SystemStatus } from "../lib/types";
+import type { JobSummary, ServiceStatus, SystemStatus } from "../lib/types";
 import { Notice, Panel } from "../components/Panel";
 
 export function SettingsPage() {
   const status = useQuery({ queryKey: ["status"], queryFn: () => api.get<SystemStatus>("/api/status") });
   const [token, setToken] = useState(getWriteToken());
   const [saved, setSaved] = useState(false);
+  const refresh = useMutation({ mutationFn: () => api.post<JobSummary>("/api/jobs/refresh-prices") });
 
   function save() {
     setWriteToken(token.trim());
@@ -48,6 +49,23 @@ export function SettingsPage() {
           )}
         </Panel>
       </div>
+      <Panel title="Prices">
+        <p className="mb-2 text-sm text-muted">The daily cron resolves ideas at 21:30 UTC. Pull the latest closes now for every open idea.</p>
+        <button
+          onClick={() => refresh.mutate()}
+          disabled={refresh.isPending || !getWriteToken()}
+          className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-accent disabled:opacity-50"
+        >
+          {refresh.isPending ? "Refreshing…" : "Refresh prices now"}
+        </button>
+        {refresh.data && (
+          <p className="num mt-2 text-xs text-muted">
+            {refresh.data.instruments_refreshed} instruments, {refresh.data.bars_added} new bars, {refresh.data.ideas_checked} ideas checked,{" "}
+            {refresh.data.resolved.length} resolved, {refresh.data.errors.length} errors
+          </p>
+        )}
+        {refresh.error && <Notice tone="wrong">{(refresh.error as Error).message}</Notice>}
+      </Panel>
       <Panel title="Defaults">
         {status.data ? (
           <>
