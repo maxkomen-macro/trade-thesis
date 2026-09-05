@@ -142,6 +142,16 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   outputs on `claude-sonnet-4-6`, EODHD symbol verification with candidates, deterministic context tile, New Thesis
   page laid out per the mockup's compose screen (prose + context tile left, editable parsed fields with amber
   questions right, "Log and find an expression" / "Log only"). 7 parser tests with the model call stubbed.
-- **Phase 4 (review + settings + deploy): in progress 2026-09-05.** `GET /api/review` (buckets by outcome, tag,
-  regime, real vs paper, rule type; divergence matrix placeholder until Phase 6), `GET/PATCH /api/settings`, Review
-  page, Settings editing, deploy config above. Staged production deploy pending verification and owner promotion.
+- **Phase 4 (review + settings + deploy): complete, committed `41d3b66` on 2026-09-05.** `GET /api/review`, `GET/PATCH
+  /api/settings`, Review page, Settings editing. **Deployed and promoted:** production is
+  `https://trade-thesis-max-d0ec.vercel.app` (`trade-thesis.vercel.app` is taken by another account). Verified on
+  the staged URL before promotion: health, status (Neon + EODHD ok), public read with dollars masked, SPA fallback,
+  cron summary with `CRON_SECRET` and a live parse with `TT_WRITE_TOKEN` both returned 200 (so the local `.env`
+  tokens match Vercel's). Deployment Protection is set to "Only Preview Deployments" (`ssoProtection.deploymentType
+  = preview`; the dashboard change had landed as `all_except_custom_domains`, corrected via the API with the
+  owner's stated intent). The regime feed is empty until Radar's action pushes.
+- **Phase 5 (options pricing and selector): NOT started. Owner instruction (2026-09-05): Phase 5 must start in a
+  fresh session with `/effort high`. Put-call parity and known-value Black-Scholes tests are written before any
+  candidate generation. No quick version.** Inputs are ready: EODHD options entitlement verified
+  (`docs/eodhd-probe.md`), `settings.options_enabled = true`, the Options page shell reads that flag.
+- **Phase 6 (option position tracking)** follows Phase 5.
