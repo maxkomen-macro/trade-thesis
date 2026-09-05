@@ -196,3 +196,50 @@ export interface ParseResponse {
   regime: RegimeReadout;
   parsed_json: Record<string, unknown>;
 }
+
+export interface ReviewBucket {
+  key: string;
+  ideas: number;
+  resolved: number;
+  right: number;
+  wrong: number;
+  expired: number;
+  direction_hit_rate: number | null;
+  target_hit_rate: number | null;
+  avg_pnl_pct: number | null;
+  total_pnl_abs: number | null;
+}
+
+export interface DivergenceCell {
+  count: number;
+  avg_option_pnl_pct: number | null;
+}
+
+export interface ReviewOut {
+  ideas: number;
+  seed_count: number;
+  dollars_hidden: boolean;
+  by_outcome: ReviewBucket[];
+  by_tag: ReviewBucket[];
+  by_regime: ReviewBucket[];
+  by_idea_type: ReviewBucket[];
+  by_rule_type: ReviewBucket[];
+  divergence: {
+    available: boolean;
+    note: string;
+    thesis_right_option_won: DivergenceCell;
+    thesis_right_option_lost: DivergenceCell;
+    thesis_wrong_option_won: DivergenceCell;
+    thesis_wrong_option_lost: DivergenceCell;
+  };
+}
+
+export interface AppSettings {
+  default_capital: number;
+  default_risk_pct: number;
+  public_hide_dollars: boolean;
+  options_enabled: boolean;
+  default_take_profit_pct: number;
+  default_stop_loss_pct: number;
+  default_time_stop_days_before_expiry: number;
+}

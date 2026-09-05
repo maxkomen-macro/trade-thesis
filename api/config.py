@@ -35,7 +35,8 @@ class Settings(BaseSettings):
     cron_secret: str = ""
 
     public_hide_dollars: bool = True
-    app_env: str = "development"
+    # Vercel sets VERCEL_ENV (production | preview | development); APP_ENV overrides it locally.
+    app_env: str = Field(default="development", validation_alias=AliasChoices("APP_ENV", "VERCEL_ENV"))
     cors_origins: str = "http://localhost:5174,http://127.0.0.1:5174"
 
     @property

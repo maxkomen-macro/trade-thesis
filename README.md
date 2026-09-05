@@ -40,6 +40,17 @@ Then open http://localhost:5174. API docs at http://localhost:8001/api/docs.
 make probe-eodhd
 ```
 
+## Deploy (Vercel Hobby, one Python function)
+
+```bash
+make migrate                                   # schema changes go to Neon first, from your machine
+vercel deploy --prod --skip-domain --yes       # staged production deployment on its own URL
+vercel promote <deployment-url>                # after verifying /api/health, /api/status and a public read
+```
+
+Env vars (`EODHD_API_KEY`, `ANTHROPIC_API_KEY`, `DATABASE_URL`, `TT_WRITE_TOKEN`, `CRON_SECRET`) are set in the
+Vercel project's Production environment. The daily cron calls `GET /api/jobs/resolve` at 21:30 UTC on weekdays.
+
 ## Tests
 
 ```bash

@@ -1,0 +1,20 @@
+# Never upload secrets or local environments
+.env
+.env.*
+.neon
+.venv
+.git
+
+# Built on Vercel by buildCommand; never upload a stale local build
+web/dist
+web/node_modules
+node_modules
+
+# Not needed at runtime
+.pytest_cache
+.ruff_cache
+api/tests
+docs
+design
+skills-lock.json
+.claude

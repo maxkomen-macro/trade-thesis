@@ -1,19 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "web": {
-      "root": "web/",
-      "framework": "vite"
-    },
-    "api": {
-      "root": "./",
-      "entrypoint": "api.main:app"
+  "framework": "fastapi",
+  "buildCommand": "cd web && npm ci && npm run build",
+  "functions": {
+    "api/main.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{api/tests/**,web/src/**,web/node_modules/**,node_modules/**,docs/**,design/**,.venv/**}"
     }
   },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": { "service": "api" } },
-    { "source": "/(.*)", "destination": { "service": "web" } }
-  ],
   "crons": [
     { "path": "/api/jobs/resolve", "schedule": "30 21 * * 1-5" }
   ]

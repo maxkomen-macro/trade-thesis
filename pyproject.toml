@@ -19,9 +19,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "respx>=0.21", "ruff>=0.5"]
 
-# Vercel loads the whole FastAPI app as one Python function from this entrypoint.
+# Vercel loads the whole FastAPI app as one Python function from this entrypoint (vercel.json sets framework=fastapi,
+# buildCommand builds web/dist, functions["api/main.py"].maxDuration=60 for the parser and jobs).
 [tool.vercel]
 entrypoint = "api.main:app"
+
+# The SPA in web/dist is registered with app.frontend(); promote it to the CDN even though the app has CORS
+# middleware (otherwise Vercel keeps static files inside the function).
+[tool.vercel.fastapi.static]
+cdn = true
 
 [tool.pytest.ini_options]
 testpaths = ["api/tests"]

@@ -103,7 +103,7 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
 
 ## Parser (api/services/parser.py, tested in api/tests/test_parser.py with the model call replaced)
 
-- `POST /api/ideas/parse` (write-protected) → `ParseResponse`. Model `claude-sonnet-4-6` via `client.messages.parse`
+- `POST /api/ideas/parse` (write-protected) → `ParseResponse`. Model `Codex-sonnet-4-6` via `client.messages.parse`
   with a Pydantic `output_format` (`ParsedThesisLLM`), so the model can only emit the schema. No thinking, no prefill.
 - The model never sees or produces market numbers. It returns queries/guesses for the instrument and benchmark;
   the server verifies them against EODHD search (accept an exact ticker match on the US exchange or a single hit,
@@ -139,7 +139,7 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
 - **Open items for the owner:** replace the seed placeholders (windows, targets, stops) via PATCH or the UI later;
   wire Radar's GitHub Action to `POST /api/jobs/regime` once deployed.
 - **Phase 3 (parser): built 2026-09-05, uncommitted pending owner review.** `POST /api/ideas/parse` with structured
-  outputs on `claude-sonnet-4-6`, EODHD symbol verification with candidates, deterministic context tile, New Thesis
+  outputs on `Codex-sonnet-4-6`, EODHD symbol verification with candidates, deterministic context tile, New Thesis
   page laid out per the mockup's compose screen (prose + context tile left, editable parsed fields with amber
   questions right, "Log and find an expression" / "Log only"). 7 parser tests with the model call stubbed.
 - **Phase 4 (review + settings + deploy): in progress 2026-09-05.** `GET /api/review` (buckets by outcome, tag,
