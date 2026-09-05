@@ -1,5 +1,7 @@
 # Trade Thesis
 
+Live: https://trade-thesis-max-d0ec.vercel.app · Source: https://github.com/maxkomen-macro/trade-thesis
+
 A public trade-idea journal that keeps score. Log an idea in plain English, let the parser turn it into a
 machine-checkable success condition, invalidation level, and time window, and a daily job marks it Right, Wrong,
 or Expired from end-of-day prices. Every idea carries a hypothetical capital amount, so P&L is a paper-portfolio
