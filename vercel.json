@@ -8,7 +8,16 @@
       "excludeFiles": "{api/tests/**,web/src/**,web/node_modules/**,node_modules/**,docs/**,design/**,.venv/**}"
     }
   },
+  "rewrites": [
+    {
+      "source": "/((?!api/)(?!assets/)[^.]*)",
+      "destination": "/index.html"
+    }
+  ],
   "crons": [
-    { "path": "/api/jobs/resolve", "schedule": "30 21 * * 1-5" }
+    {
+      "path": "/api/jobs/resolve",
+      "schedule": "30 21 * * 1-5"
+    }
   ]
 }
