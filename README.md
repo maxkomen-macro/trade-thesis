@@ -15,9 +15,9 @@ broken down by regime.
 
 Phases 1 (scaffold + data-source probe), 2 (ledger core: ideas, price snapshots, resolver, Ledger and Idea
 detail pages), 3 (Anthropic-backed thesis parser and the New Thesis page) and 4 (Review, Settings, deploy) are live.
-Phase 5, the options expression selector, is built and awaiting review: Black-Scholes pricing with tests written
-first, candidate generation from the live EODHD chain, scoring, scenario heatmaps, a payoff chart, and a shares
-comparison, gated behind `settings.options_enabled` (`docs/options-selector.md`). Phase 6 (taking a position,
+Phase 5, the options expression selector, is live: Black-Scholes pricing with tests written first, candidate
+generation from the live EODHD chain, scoring, scenario heatmaps, a payoff chart, and a shares comparison, gated
+behind `settings.options_enabled` (`docs/options-selector.md`). Phase 6 (taking a position,
 daily marks, exit rules, the thesis-versus-option divergence table) is next. See `CLAUDE.md` → *State of the build*
 and `docs/eodhd-probe.md`.
 
@@ -57,7 +57,8 @@ make probe-selector args="USO.US down --target 135 --stop 148 --days 21"
 ```bash
 make migrate                                   # schema changes go to Neon first, from your machine
 vercel deploy --prod --skip-domain --yes       # staged production deployment on its own URL
-vercel promote <deployment-url>                # after verifying /api/health, /api/status and a public read
+make verify-deploy url=<deployment-url>        # health, status, masking, SPA deep links, cron, parse, one options run
+vercel promote <deployment-url> --yes
 ```
 
 Env vars (`EODHD_API_KEY`, `ANTHROPIC_API_KEY`, `DATABASE_URL`, `TT_WRITE_TOKEN`, `CRON_SECRET`) are set in the

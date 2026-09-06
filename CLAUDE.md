@@ -48,7 +48,8 @@ read-only from here; never modify it). Own repo, own Neon database, own Vercel d
   **Services is beta on all plans but is not used** (owner: standard functions + Vercel Cron only). Hobby cron:
   once per day, ±59 min precision; `30 21 * * 1-5` is allowed. Crons send GET with `Authorization: Bearer CRON_SECRET`
   and run only on the promoted production deployment. `.vercelignore` keeps `.env*`, `.venv`, `node_modules`, tests,
-  docs out of the upload. Env vars live only in the Vercel **Production** environment (owner-managed), so the
+  docs out of the upload. `vercel.json` also carries a rewrite of extension-less non-API paths to `/index.html`
+  (added 2026-09-05): the CDN-promoted SPA has no fallback of its own, so without it deep links 404. Env vars live only in the Vercel **Production** environment (owner-managed), so the
   verification deploy is a staged production deployment: `vercel deploy --prod --skip-domain --yes`, verified on its
   unique URL, then `vercel promote <url>` after the owner's go-ahead. Migrations run locally against Neon
   (`make migrate`) before deploying schema changes; nothing migrates at build time.
@@ -207,6 +208,14 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   (`account_size × default_risk_pct`, warning only; contracts from `capital_assigned`); the per-leg width filter,
   the window-coverage cushion penalty and the IV-versus-realized stand-in were accepted as built. Verified live on a
   throwaway SQLite database with the real USO chain and the real rationale model (201 in 12.7 s, 386 candidates,
-  70 passing, put spread on top, rationale accepted by the number guard). Deploy status: see the entry below.
+  70 passing, put spread on top, rationale accepted by the number guard). **Deployed 2026-09-05 (evening, US):**
+  commit `66d6a24` plus `3415bd7` (vercel.json SPA rewrite) staged as `trade-thesis-m75acn8xq-max-d0ec.vercel.app`,
+  verified with `make verify-deploy` (all checks, including one options analysis on the owner's GLD idea 5:
+  `no_trade`, reason `no_target`, 1732 chain rows, rationale from the model) and promoted. The verification found
+  that deep links (`/ideas/1`, `/review`) had returned FastAPI's JSON 404 in production since Phase 4: with the static
+  build promoted to the CDN, `web/dist` is not inside the function and the `app.frontend` fallback never registers.
+  `vercel.json` now rewrites extension-less non-API paths to `/index.html`. Local `main` is ahead of `origin/main`
+  (not pushed; the owner's call). Cosmetic leftover for Phase 6: the "Show all 0 candidates" toggle on a no-candidate
+  analysis.
 - **Phase 6 (option position tracking)** follows Phase 5: `option_positions`, `option_snapshots`, `chain_snapshots`,
   take-this-expression flow (button is present but disabled), daily marks and exit rules, dual P&L, divergence table.
