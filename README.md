@@ -14,8 +14,12 @@ broken down by regime.
 ## Status
 
 Phases 1 (scaffold + data-source probe), 2 (ledger core: ideas, price snapshots, resolver, Ledger and Idea
-detail pages) and 3 (Anthropic-backed thesis parser and the New Thesis page) are built. See `CLAUDE.md` → *State of the build* and `docs/eodhd-probe.md`. Options chain access via the EODHD UnicornBay add-on was verified on 2026-09-04, so the options selector
-(Phases 5–6) is unblocked and gated behind `settings.options_enabled`.
+detail pages), 3 (Anthropic-backed thesis parser and the New Thesis page) and 4 (Review, Settings, deploy) are live.
+Phase 5, the options expression selector, is built and awaiting review: Black-Scholes pricing with tests written
+first, candidate generation from the live EODHD chain, scoring, scenario heatmaps, a payoff chart, and a shares
+comparison, gated behind `settings.options_enabled` (`docs/options-selector.md`). Phase 6 (taking a position,
+daily marks, exit rules, the thesis-versus-option divergence table) is next. See `CLAUDE.md` → *State of the build*
+and `docs/eodhd-probe.md`.
 
 ## Stack
 
@@ -40,6 +44,12 @@ Then open http://localhost:5174. API docs at http://localhost:8001/api/docs.
 
 ```bash
 make probe-eodhd
+```
+
+Dry-run the options selector against the live chain without writing anything:
+
+```bash
+make probe-selector args="USO.US down --target 135 --stop 148 --days 21"
 ```
 
 ## Deploy (Vercel Hobby, one Python function)

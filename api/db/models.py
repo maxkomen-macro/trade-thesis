@@ -1,5 +1,6 @@
 """ORM models. Phase 1: `settings`, `regime_snapshots`. Phase 2: `instruments`, `ideas`, `price_snapshots`,
-`resolution_events`. Phases 5–6 add the option_* and chain_snapshots tables."""
+`resolution_events`. Phase 5: `option_analyses`. Phase 6 adds `option_positions`, `option_snapshots`,
+`chain_snapshots`."""
 
 from __future__ import annotations
 
@@ -123,6 +124,9 @@ class Idea(Base):
     events: Mapped[list[ResolutionEvent]] = relationship(
         back_populates="idea", cascade="all, delete-orphan", order_by="ResolutionEvent.occurred_on"
     )
+    analyses: Mapped[list[OptionAnalysis]] = relationship(
+        back_populates="idea", cascade="all, delete-orphan", order_by="OptionAnalysis.created_at"
+    )
 
 
 class PriceSnapshot(Base):
@@ -160,6 +164,35 @@ class ResolutionEvent(Base):
     idea: Mapped[Idea] = relationship(back_populates="events")
 
 
+class OptionAnalysis(Base):
+    """One run of the options expression selector for an idea (Phase 5). Every number the Expression page shows comes
+    from this row: `candidates_json` carries each candidate's legs with the chain quotes they were built from
+    (bid/ask/mid/IV/OI/volume and their timestamps), the metrics, the scenario grid for the top three, and the
+    rationale strings; `spot` / `spot_as_of` trace to a price_snapshots row; `chain_as_of` is the chain quote time."""
+
+    __tablename__ = "option_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    idea_id: Mapped[int] = mapped_column(ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    chain_as_of: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    chain_trade_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    spot: Mapped[float] = mapped_column(Float, nullable=False)
+    spot_as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    spot_source: Mapped[str] = mapped_column(String(16), nullable=False, default="realtime")
+    iv_percentile_1y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    iv_rv_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_vol_20d: Mapped[float | None] = mapped_column(Float, nullable=True)  # percent, annualized
+    rate_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)  # trade | no_trade
+    verdict_text: Mapped[str] = mapped_column(Text, nullable=False)
+    candidates_json: Mapped[Any] = mapped_column(JSONType, nullable=False)
+    shares_comparison_json: Mapped[Any] = mapped_column(JSONType, nullable=False)
+    params_json: Mapped[Any] = mapped_column(JSONType, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    idea: Mapped[Idea] = relationship(back_populates="analyses")
+
+
 # Seed values for a fresh database. options_enabled is flipped in the DB (not here) once the EODHD options probe
 # returns 200; it was set true on 2026-09-04 after the marketplace add-on went live (docs/eodhd-probe.md).
 SETTINGS_SEED: dict[str, Any] = {
@@ -170,4 +203,9 @@ SETTINGS_SEED: dict[str, Any] = {
     "default_take_profit_pct": 100,
     "default_stop_loss_pct": 50,
     "default_time_stop_days_before_expiry": 5,
+    # Model assumption for Black-Scholes, in percent (not market data). 4.0 reprices UnicornBay's own theoretical
+    # values within 1% on 2026-09-05 (docs/options-selector.md); set it to the current 3-month bill yield.
+    "risk_free_rate_pct": 4.0,
+    # Account size in dollars for the risk budget (account_size x default_risk_pct); owner-set, hidden from the public.
+    "account_size": 2342,
 }

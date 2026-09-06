@@ -103,27 +103,29 @@ export function SettingsPage() {
                 {(
                   [
                     ["default_capital", "Default capital per idea", "number"],
-                    ["default_risk_pct", "Default risk % (options budget)", "number"],
+                    ["account_size", "Account size, $ (hidden from public viewers)", "number"],
+                    ["default_risk_pct", "Risk budget, % of account size", "number"],
                     ["public_hide_dollars", "Hide dollars from public viewers", "bool"],
                     ["options_enabled", "Options selector enabled", "bool"],
                     ["default_take_profit_pct", "Default take profit %", "number"],
                     ["default_stop_loss_pct", "Default stop loss %", "number"],
                     ["default_time_stop_days_before_expiry", "Default time stop, days before expiry", "number"],
+                    ["risk_free_rate_pct", "Risk-free rate for option pricing, % (model assumption)", "number"],
                   ] as Array<[keyof AppSettings, string, "number" | "bool"]>
                 ).map(([key, label, kind]) => {
-                  const current = status.data!.settings[key] as number | boolean;
+                  const current = status.data!.settings[key] as number | boolean | null;
                   const edited = edits[key];
                   return (
                     <tr key={key} className="border-t border-line">
                       <td className="py-1.5 text-muted">{label}</td>
                       <td className="num py-1.5 text-right">
                         {!canWrite ? (
-                          String(current)
+                          current === null ? "hidden" : String(current)
                         ) : kind === "bool" ? (
                           <input type="checkbox" checked={edited === undefined ? Boolean(current) : Boolean(edited)} onChange={(e) => setEdits({ ...edits, [key]: e.target.checked })} />
                         ) : (
                           <input
-                            value={edited === undefined ? String(current) : String(edited)}
+                            value={edited === undefined ? String(current ?? "") : String(edited)}
                             onChange={(e) => setEdits({ ...edits, [key]: e.target.value })}
                             className="w-28 rounded border border-line bg-bg px-2 py-0.5 text-right text-sm outline-none focus:border-accent"
                           />

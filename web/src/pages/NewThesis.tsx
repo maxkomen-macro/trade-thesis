@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, getWriteToken } from "../lib/api";
 import type { Direction, IdeaDetail, ParseResponse, SystemStatus } from "../lib/types";
-import { fmtDate, fmtPct, fmtPrice, regimeColor } from "../lib/format";
+import { fmtDate, fmtMoney, fmtPct, fmtPrice, regimeColor } from "../lib/format";
 import { Notice } from "../components/Panel";
 
 /** Layout follows design/trade-thesis-mockup.html, "New thesis" screen: prose on the left with a context tile,
@@ -89,6 +89,10 @@ export function NewThesis() {
   const canWrite = Boolean(getWriteToken());
   const status = useQuery({ queryKey: ["status"], queryFn: () => api.get<SystemStatus>("/api/status") });
   const defaultCapital = Number(status.data?.settings.default_capital ?? 1000);
+  // Risk budget is account-level: account_size x default_risk_pct. account_size is null without the write token.
+  const accountSize = status.data?.settings.account_size == null ? null : Number(status.data.settings.account_size);
+  const riskPct = Number(status.data?.settings.default_risk_pct ?? 2);
+  const riskBudget = accountSize === null ? null : (accountSize * riskPct) / 100;
 
   const [text, setText] = useState("");
   const [parsed, setParsed] = useState<ParseResponse | null>(null);
@@ -305,6 +309,12 @@ export function NewThesis() {
             </Field>
             <Field label="Capital for idea">
               <input value={draft.capital_assigned} onChange={(e) => set("capital_assigned", e.target.value)} className={inputCls + " w-28"} />
+              {riskBudget !== null && Number(draft.capital_assigned) > riskBudget && (
+                <div className="mt-1 text-sm text-accent">
+                  Capital {fmtMoney(Number(draft.capital_assigned))} exceeds your risk budget of {fmtMoney(riskBudget)} ({riskPct.toFixed(1)}% of a{" "}
+                  {fmtMoney(accountSize)} account).
+                </div>
+              )}
             </Field>
             <Field label="Type">
               <select value={draft.idea_type} onChange={(e) => set("idea_type", e.target.value as "real" | "paper")} className={inputCls + " w-32 font-sans"}>

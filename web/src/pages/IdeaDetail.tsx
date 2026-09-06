@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, getWriteToken } from "../lib/api";
-import type { IdeaDetail as IdeaDetailT, SystemStatus } from "../lib/types";
+import { ApiError, api, getWriteToken } from "../lib/api";
+import type { IdeaDetail as IdeaDetailT, OptionAnalysis, SystemStatus } from "../lib/types";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPct, pnlColor } from "../lib/format";
 import { Notice, Panel } from "../components/Panel";
 import { DirectionTag, StatusPill, TypeTag } from "../components/IdeaBits";
@@ -15,6 +15,12 @@ export function IdeaDetail() {
   const canWrite = Boolean(getWriteToken());
   const idea = useQuery({ queryKey: ["idea", id], queryFn: () => api.get<IdeaDetailT>(`/api/ideas/${id}`) });
   const status = useQuery({ queryKey: ["status"], queryFn: () => api.get<SystemStatus>("/api/status") });
+  const analysis = useQuery({
+    queryKey: ["options", id],
+    queryFn: () => api.get<OptionAnalysis>(`/api/ideas/${id}/options`),
+    retry: false,
+    enabled: Boolean(status.data?.options_enabled),
+  });
   const [note, setNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
@@ -147,6 +153,24 @@ export function IdeaDetail() {
             <Row k="Regime at entry">
               <span>{i.radar_regime ?? "not stored"}</span>
             </Row>
+            {status.data?.options_enabled && (
+              <Row k="Expression">
+                <Link to={`/ideas/${i.id}/options`} className="underline">
+                  {analysis.data
+                    ? analysis.data.verdict === "trade"
+                      ? `Trade: ${analysis.data.candidates.find((c) => c.rank === 1)?.name ?? "see analysis"}`
+                      : "No trade (see analysis)"
+                    : analysis.error instanceof ApiError && analysis.error.status === 404
+                      ? i.status === "open"
+                        ? "not analysed yet"
+                        : "none"
+                      : analysis.isLoading
+                        ? "…"
+                        : "open analysis"}
+                </Link>
+                {analysis.data && <div className="text-[11px] text-muted">{fmtDateTime(analysis.data.created_at)} · position tracking arrives in Phase 6</div>}
+              </Row>
+            )}
             {i.status !== "open" && (
               <Row k="Resolution">
                 <span>

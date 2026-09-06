@@ -17,6 +17,11 @@ read-only from here; never modify it). Own repo, own Neon database, own Vercel d
 5. **Public read, protected write.** Writes need `Authorization: Bearer <TT_WRITE_TOKEN>`; cron needs `CRON_SECRET`.
    `PUBLIC_HIDE_DOLLARS=true` hides dollar figures from unauthenticated viewers (percentages only).
 6. **Verify before assuming.** Probe an endpoint before wrapping it. Read Radar's code for its routes; do not guess.
+7. **Local verification never touches Neon or a running `make dev`.** Run checks against a throwaway SQLite database
+   on non-default ports (API `:8011`, web `:5184`; `.claude/launch.json` has `web-local-check`, which proxies to
+   `:8011`). Before starting a local API, `lsof -iTCP:8001` — the owner's dev server is usually on `:8001`/`:5174`
+   against production Neon, and a curl to the wrong port writes to the public ledger (it happened on 2026-09-05).
+   Create the SQLite schema with `Base.metadata.create_all` and `DATABASE_URL=sqlite:///<scratch>/tt-local.db`.
 
 ## Verified facts (do not re-derive)
 
@@ -56,7 +61,10 @@ read-only from here; never modify it). Own repo, own Neon database, own Vercel d
 ## Environment variables (`.env.example`)
 
 `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `EODHD_API_KEY`, `ANTHROPIC_API_KEY`, `TT_WRITE_TOKEN`,
-`CRON_SECRET`, `PUBLIC_HIDE_DOLLARS`, `APP_ENV`, `CORS_ORIGINS`. (No Radar URL: Radar pushes to us. `EODHD_API_TOKEN` is accepted as an alias of `EODHD_API_KEY`.)
+`CRON_SECRET`, `PUBLIC_HIDE_DOLLARS`, `APP_ENV`, `CORS_ORIGINS`. Settings rows (DB, editable in Settings):
+`default_capital`, `account_size` (dollars, hidden from public viewers), `default_risk_pct` (share of the account),
+`public_hide_dollars`, `options_enabled`, `default_take_profit_pct`, `default_stop_loss_pct`,
+`default_time_stop_days_before_expiry`, `risk_free_rate_pct`. (No Radar URL: Radar pushes to us. `EODHD_API_TOKEN` is accepted as an alias of `EODHD_API_KEY`.)
 Local dev reads `.env` then `.env.local` (Neon-managed). Both are gitignored. Local `.env` reuses the owner's EODHD and
 Anthropic keys from the Radar checkout for probes only. The owner sets Vercel env vars personally; never push them.
 
@@ -65,16 +73,20 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
 - `api/` FastAPI + SQLAlchemy 2 + Alembic + Pydantic v2 + httpx + anthropic. Entry `api/main.py`.
   `api/db/` models/schemas/session; `api/services/` eodhd (client), prices (snapshot cache), rules (rule schema),
   resolver (pure decision engine), ledger (DB orchestration + serialization), radar (regime store), parser (Anthropic
-  structured output -> thesis schema, EODHD symbol verification, deterministic context tile);
-  `api/routers/` system/jobs/ideas/instruments; `api/scripts/` probe_eodhd, seed_ideas; `api/tests/` pytest
-  (no network; in-memory SQLite via `JSONType = JSON().with_variant(JSONB, "postgresql")`, `TagsType` likewise).
+  structured output -> thesis schema, EODHD symbol verification, deterministic context tile), pricing (Black-Scholes,
+  Greeks, structures, breakevens, PoP, scenario grid; pure), options (chain fetch, candidates, scoring, shares
+  comparison, rationale, `option_analyses` rows);
+  `api/routers/` system/jobs/ideas/instruments/settings/review/analyses; `api/scripts/` probe_eodhd, seed_ideas,
+  probe_selector; `api/tests/` pytest (no network; in-memory SQLite via
+  `JSONType = JSON().with_variant(JSONB, "postgresql")`, `TagsType` likewise).
 - `web/` Vite + React 18 + TS + Tailwind v4 (`@tailwindcss/vite`) + React Query + Lightweight Charts 5.
   Tokens live in `web/src/styles/index.css` (`@theme`): bg `#0d1117`, surface `#161b22`, surface-2 `#1c2129`,
   line `#30363d`, accent amber `#f0b429`, right `#2ecc71`, wrong `#e74c3c`, open `#4a9eff`.
   Fonts: Space Grotesk (headings), IBM Plex Sans (body), IBM Plex Mono (numbers/tickers, class `num`).
   Sentence-case labels, no all-caps eyebrows.
 - `alembic/` migrations (`0001` settings + seeds, `0002` regime_snapshots, `0003` instruments/ideas/price_snapshots/
-  resolution_events, `0004` ideas.spread_at_window_end_pct). `alembic/env.py` uses the unpooled URL.
+  resolution_events, `0004` ideas.spread_at_window_end_pct, `0005` option_analyses + `risk_free_rate_pct` setting,
+  `0006` `account_size` setting). `alembic/env.py` uses the unpooled URL.
 - `design/trade-thesis-mockup.html` — layout reference (arrived 2026-09-04). Match its screens, not a clone of Radar.
 
 ## Resolver semantics (api/services/resolver.py, tested in api/tests/test_resolver.py)
@@ -115,10 +127,45 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
   EODHD failures appear in `context.errors`; numbers are never substituted.
 - Saving posts the edited fields to `POST /api/ideas` with `parsed_json` (model id, timestamp, raw LLM output).
 
+## Options selector (api/services/pricing.py + options.py, tested in test_pricing.py and test_options_selector.py)
+
+Full write-up in `docs/options-selector.md`. The short version:
+
+- `POST /api/ideas/{id}/options` (write, 409 unless `options_enabled`, 422 once the window has ended) pulls spot
+  (delayed quote, stored as a `realtime` snapshot), 20-day realized vol from stored EOD bars, and the UnicornBay chain
+  (one request per needed right, ±25% strikes widened to target/stop, 120 days), runs the selector, calls the
+  rationale model, and stores one `option_analyses` row. Any EODHD failure is a 502 and nothing is stored.
+  `GET /api/ideas/{id}/options` returns the latest row (public; `hide_dollars` nulls capital, risk budget, contract
+  counts and dollars at risk). The page reads only that row.
+- Pricing is pure Python (`math.erf`, no numpy): Black-Scholes-Merton per leg at the **chain's IV held constant**,
+  T = calendar days / 365, rate from `settings.risk_free_rate_pct` (model assumption, seeded 4.0 because it reprices
+  UnicornBay's theoretical values within ~1%). Missing IV -> 20-day realized vol, flagged; no vol at all -> unpriceable.
+- Candidates per spec: long call/put (10% ITM to 5% past target), vertical debit spreads (long within 7% of spot,
+  short at/beyond target within 12%), straddles/strangles only for `range` or null conviction; every expiry on or
+  after `window_end` plus the one before it ("no cushion"). Directional ideas need a price target (`level`, or
+  `pct_move` off entry); `direction` / `relative` rules -> `no_trade`, reason `no_target`.
+- Ranking metric = return on premium **at target on the window end** (`eval_date = min(window_end, expiry)`), minus
+  2.0 × structure bid/ask width %, 1.0 × theta % per week at spot, IV richness (50 × (IV/RV − 1) until the 1y
+  percentile exists), and a cushion penalty (15 + return × uncovered window fraction) for expiries before the window
+  end. Hard filters: OI ≥ 100 on every leg and the **widest leg's** bid/ask width ≤ 10% (the structure width is
+  penalized, not filtered, because netting inflates it). Verdict `no_trade` when nothing passes, the best return ≤ 50%,
+  the target sits inside breakeven for every candidate, or there is no target.
+- Top three carry the scenario grid (rows stop -> 5% past target, 9 steps, target and spot snapped; columns entry,
+  weekly, window end, expiry), the payoff curve, `days_of_theta` (days at spot before losing `default_stop_loss_pct`),
+  and a `why` string. Sizing (owner decision 2026-09-05): `contracts = floor(capital_assigned / cost)`; the risk
+  budget is account-level, `settings.account_size × default_risk_pct`, and only raises an amber warning (Expression
+  and New Thesis pages, `params.sizing.capital_exceeds_risk_budget`) when the idea's capital exceeds it.
+- Rationale: `claude-sonnet-4-6` structured output from the computed numbers only; every numeric token in its text
+  must round to a number in the payload (`text_uses_only_input_numbers`), otherwise a template string is used and
+  `params.rationale.source` says so.
+- `iv_percentile_1y` stays null until `chain_snapshots` (Phase 6); IV versus realized stands in, labelled.
+- Dry runs without database writes: `make probe-selector args="USO.US down --target 135 --stop 148 --days 21"`.
+
 ## Commands
 
 `make setup` · `make dev` (API + web) · `make api` · `make web` · `make migrate` · `make migration m="msg"` ·
-`make test` · `make lint` · `make typecheck` · `make build` · `make probe-eodhd` · `make seed`
+`make test` · `make lint` · `make typecheck` · `make build` · `make probe-eodhd` · `make probe-selector args="…"` ·
+`make seed`
 
 ## State of the build
 
@@ -150,8 +197,16 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   tokens match Vercel's). Deployment Protection is set to "Only Preview Deployments" (`ssoProtection.deploymentType
   = preview`; the dashboard change had landed as `all_except_custom_domains`, corrected via the API with the
   owner's stated intent). The regime feed is empty until Radar's action pushes.
-- **Phase 5 (options pricing and selector): NOT started. Owner instruction (2026-09-05): Phase 5 must start in a
-  fresh session with `/effort high`. Put-call parity and known-value Black-Scholes tests are written before any
-  candidate generation. No quick version.** Inputs are ready: EODHD options entitlement verified
-  (`docs/eodhd-probe.md`), `settings.options_enabled = true`, the Options page shell reads that flag.
-- **Phase 6 (option position tracking)** follows Phase 5.
+- **Phase 5 (options pricing and selector): built 2026-09-05, approved and committed on `phase-5-options`, merged to
+  `main`.** Tests first: `test_pricing.py` (28: put-call parity, Hull's known values, independent `NormalDist` oracle,
+  finite-difference Greeks, hand-computed grid cells, brute-force days-of-theta) before `pricing.py`; then
+  `options.py`, `routers/analyses.py`, migrations `0005` (option_analyses, risk_free_rate_pct) and `0006`
+  (account_size), both applied to Neon on 2026-09-05, `docs/options-selector.md`, the Expression page, an
+  "Expression" row on Idea detail, `account_size` and `risk_free_rate_pct` in Settings, `make probe-selector`,
+  `make verify-deploy`. 107 tests. Owner review 2026-09-05: sizing changed to an account-level risk budget
+  (`account_size × default_risk_pct`, warning only; contracts from `capital_assigned`); the per-leg width filter,
+  the window-coverage cushion penalty and the IV-versus-realized stand-in were accepted as built. Verified live on a
+  throwaway SQLite database with the real USO chain and the real rationale model (201 in 12.7 s, 386 candidates,
+  70 passing, put spread on top, rationale accepted by the number guard). Deploy status: see the entry below.
+- **Phase 6 (option position tracking)** follows Phase 5: `option_positions`, `option_snapshots`, `chain_snapshots`,
+  take-this-expression flow (button is present but disabled), daily marks and exit rules, dual P&L, divergence table.

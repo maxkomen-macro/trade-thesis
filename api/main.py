@@ -9,13 +9,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import APP_VERSION, ROOT, settings
-from api.routers import ideas, instruments, jobs, review, system
+from api.routers import analyses, ideas, instruments, jobs, review, system
 from api.routers import settings as settings_router
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 # httpx logs full request URLs at INFO, which would put the EODHD api_token into server logs. Never.
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+for _name in ("httpx", "httpcore", "httpx2", "httpcore2"):  # httpx2/httpcore2: the copies vendored by the anthropic SDK
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 app = FastAPI(
     title="Trade Thesis API",
@@ -38,6 +38,7 @@ app.include_router(ideas.router)
 app.include_router(instruments.router)
 app.include_router(settings_router.router)
 app.include_router(review.router)
+app.include_router(analyses.router)
 
 
 @app.get("/api", include_in_schema=False)

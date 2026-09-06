@@ -1,6 +1,6 @@
 """Ideas API on in-memory SQLite with EODHD mocked (labeled fixtures). No network."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -176,7 +176,7 @@ def test_expired_idea_records_direction_flag(client, eodhd):
 
 
 def test_open_idea_patch_close_delete(client, eodhd):
-    today = date.today()
+    today = datetime.now(UTC).date()  # the API dates everything in UTC
     body = idea_body(
         window_start=today.isoformat(),
         window_end=(today + timedelta(days=30)).isoformat(),
@@ -210,7 +210,7 @@ def test_eodhd_failure_surfaces_as_502_not_a_guess(client):
 
 
 def test_jobs_resolve_and_refresh(client, eodhd):
-    today = date.today()
+    today = datetime.now(UTC).date()  # the API dates everything in UTC
     client.post(
         "/api/ideas",
         json=idea_body(

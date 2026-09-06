@@ -242,4 +242,174 @@ export interface AppSettings {
   default_take_profit_pct: number;
   default_stop_loss_pct: number;
   default_time_stop_days_before_expiry: number;
+  risk_free_rate_pct: number;
+  account_size: number | null; // null for viewers without the write token
+}
+
+export interface Sizing {
+  capital_assigned: number | null;
+  account_size: number | null;
+  risk_pct: number;
+  risk_budget: number | null;
+  capital_exceeds_risk_budget: boolean;
+}
+
+// --- options selector (Phase 5) ---------------------------------------------------------------------------------
+
+export interface OptionLeg {
+  contract: string;
+  expiry: string;
+  strike: number;
+  right: "call" | "put";
+  side: "long" | "short";
+  qty: number;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  iv: number | null;
+  iv_source: string;
+  oi: number | null;
+  volume: number | null;
+  delta: number | null;
+}
+
+export interface ScenarioGrid {
+  prices: number[];
+  dates: string[];
+  ret_pct: Array<Array<number | null>>;
+  values: Array<Array<number | null>>;
+  target_row: number | null;
+  spot_row: number | null;
+  window_end_col: number;
+  iv_held: number | null;
+  assumption: string;
+}
+
+export interface OptionCandidate {
+  rank: number | null;
+  structure: "long_call" | "long_put" | "debit_spread" | "straddle" | "strangle";
+  name: string;
+  kind: string;
+  expiry: string;
+  cushion_days: number;
+  cushion: string;
+  window_days: number;
+  tier_ok: boolean;
+  tier_note: string;
+  legs: OptionLeg[];
+  iv_fallback: boolean;
+  passes_filters: boolean;
+  filter_reasons: string[];
+  debit: number | null;
+  structure_bid: number | null;
+  structure_ask: number | null;
+  spread_width_pct?: number | null;
+  leg_width_pct_max?: number | null;
+  leg_widths_pct?: Array<number | null>;
+  open_interest?: number;
+  volume?: number;
+  eval_date?: string;
+  model_value_at_entry?: number;
+  model_vs_mid_pct?: number;
+  value_at_spot_window_end?: number;
+  ret_at_spot_window_end_pct?: number;
+  iv?: number | null;
+  iv_source?: string;
+  iv_rv_ratio?: number | null;
+  iv_percentile_1y?: number | null;
+  iv_percentile_note?: string;
+  breakevens?: number[];
+  breakeven?: number | null;
+  target_to_breakeven?: number | null;
+  target_to_breakeven_pct?: number | null;
+  target_beyond_breakeven?: boolean | null;
+  move_spent_to_breakeven_pct?: number | null;
+  value_at_target_window_end?: number | null;
+  ret_at_target_window_end_pct?: number | null;
+  value_at_target_expiry?: number | null;
+  ret_at_target_expiry_pct?: number | null;
+  pop_pct?: number | null;
+  pop_iv?: number | null;
+  theta_per_day?: number;
+  delta?: number;
+  theta_week_pct?: number;
+  days_of_theta?: number | null;
+  cost_per_contract?: number;
+  capital_assigned?: number | null;
+  account_size?: number | null;
+  risk_budget?: number | null;
+  risk_pct?: number;
+  capital_exceeds_risk_budget?: boolean;
+  contracts?: number | null;
+  at_risk?: number | null;
+  max_loss_per_contract?: number;
+  max_gain_per_contract?: number | null;
+  affordable?: boolean;
+  score?: number | null;
+  score_breakdown?: Record<string, number | string>;
+  grid?: ScenarioGrid | null;
+  payoff_curve?: Array<[number, number]>;
+  why?: string;
+  why_source?: "model" | "template";
+}
+
+export interface VehicleRow {
+  label?: string;
+  symbol?: string;
+  leverage?: number;
+  return_pct: number;
+  pnl_abs: number | null;
+  capital?: number | null;
+  note?: string;
+}
+
+export interface SharesComparison {
+  target: number | null;
+  spot: number;
+  move_pct: number | null;
+  shares: VehicleRow | null;
+  inverse_etf: VehicleRow | null;
+  best_option: {
+    name: string;
+    kind: string;
+    return_pct: number;
+    return_at_expiry_pct: number | null;
+    at_risk: number | null;
+    contracts: number | null;
+    pnl_abs: number | null;
+  } | null;
+  verdict: "option" | "shares" | "none";
+  verdict_text: string;
+}
+
+export interface OptionAnalysis {
+  id: number;
+  idea_id: number;
+  created_at: string;
+  chain_as_of: string | null;
+  chain_trade_date: string | null;
+  spot: number;
+  spot_as_of: string;
+  spot_source: string;
+  iv_percentile_1y: number | null;
+  iv_rv_ratio: number | null;
+  realized_vol_20d: number | null;
+  rate_pct: number;
+  verdict: "trade" | "no_trade";
+  verdict_text: string;
+  candidates: OptionCandidate[];
+  shares_comparison: SharesComparison;
+  params: {
+    inputs?: Record<string, unknown>;
+    chain?: Record<string, unknown>;
+    sizing?: Sizing;
+    counts?: { generated: number; passing: number; by_structure: Record<string, number> };
+    verdict_reason?: string;
+    rationale?: { model: string; source: string };
+    filters?: Record<string, number>;
+    score_weights?: Record<string, number>;
+    min_return_at_target_pct?: number;
+    errors?: Array<Record<string, unknown>>;
+  };
+  dollars_hidden: boolean;
 }

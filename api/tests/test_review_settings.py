@@ -48,6 +48,13 @@ def test_settings_read_and_protected_update(client):
     ).json()
     assert out["default_capital"] == 2500 and out["public_hide_dollars"] is False
     assert client.get("/api/settings").json()["default_capital"] == 2500
+    # account size is a dollar figure: editable, and once hiding is back on, hidden from the public only
+    assert client.patch("/api/settings", json={"account_size": 5000}, headers=WRITE).json()["account_size"] == 5000
+    client.patch("/api/settings", json={"public_hide_dollars": True}, headers=WRITE)
+    assert client.get("/api/settings").json()["account_size"] is None
+    assert client.get("/api/settings", headers=WRITE).json()["account_size"] == 5000
+    assert client.get("/api/status").json()["settings"]["account_size"] is None
+    assert client.get("/api/status", headers=WRITE).json()["settings"]["account_size"] == 2342  # seed: no engine
 
 
 def test_review_buckets_exclude_seeds(client):

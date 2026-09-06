@@ -313,3 +313,47 @@ class ParseResponse(BaseModel):
     context: dict[str, Any] | None
     regime: dict[str, Any]
     parsed_json: dict[str, Any]
+
+
+# --- options selector (Phase 5) -----------------------------------------------------------------------------------
+
+
+class OptionsRunRequest(BaseModel):
+    """Optional inputs for a selector run. The inverse ETF is only used for the shares comparison panel; both fields
+    are required together (the leverage is not looked up anywhere, so it has to be stated)."""
+
+    inverse_symbol: str | None = Field(default=None, min_length=3, max_length=32)
+    inverse_leverage: float | None = Field(default=None, gt=0, le=5)
+
+    @model_validator(mode="after")
+    def _both_or_neither(self):
+        if (self.inverse_symbol is None) != (self.inverse_leverage is None):
+            raise ValueError("inverse_symbol and inverse_leverage go together")
+        if self.inverse_symbol:
+            self.inverse_symbol = self.inverse_symbol.strip().upper()
+        return self
+
+
+class OptionAnalysisOut(BaseModel):
+    """A stored selector run. `candidates` is the ranked list with every metric, legs with their chain quotes, the
+    scenario grid and payoff curve for the top three, and the rationale strings. Dollar fields are nulled for
+    viewers without the write token when public_hide_dollars is on (`dollars_hidden`)."""
+
+    id: int
+    idea_id: int
+    created_at: datetime
+    chain_as_of: datetime | None
+    chain_trade_date: date | None
+    spot: float
+    spot_as_of: datetime
+    spot_source: str
+    iv_percentile_1y: float | None
+    iv_rv_ratio: float | None
+    realized_vol_20d: float | None
+    rate_pct: float
+    verdict: str
+    verdict_text: str
+    candidates: list[dict[str, Any]]
+    shares_comparison: dict[str, Any]
+    params: dict[str, Any]
+    dollars_hidden: bool

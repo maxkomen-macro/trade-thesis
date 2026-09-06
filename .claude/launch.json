@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-local-check",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "VITE_API_PROXY=http://127.0.0.1:8011 npm run dev --prefix web -- --port 5184 --strictPort"
+      ],
+      "port": 5184
+    }
+  ]
+}

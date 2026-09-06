@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from api.auth import is_writer
 from api.config import APP_VERSION, settings
 from api.db.models import SETTINGS_SEED, Setting
 from api.db.schemas import Health, RegimeReadout, ServiceStatus, SystemStatus
@@ -47,7 +48,7 @@ def health() -> Health:
 
 
 @router.get("/status", response_model=SystemStatus)
-def status(db: Session | None = Depends(get_db_optional)) -> SystemStatus:
+def status(request: Request, db: Session | None = Depends(get_db_optional)) -> SystemStatus:
     db_ok, db_detail = ping_db()
 
     try:
@@ -68,6 +69,8 @@ def status(db: Session | None = Depends(get_db_optional)) -> SystemStatus:
         regime_detail = f"{regime.regime} as of {regime.as_of} ({regime.age_days}d old, source {regime.source})"
 
     values, source = load_settings()
+    if bool(values.get("public_hide_dollars", settings.public_hide_dollars)) and not is_writer(request):
+        values = {**values, "account_size": None}  # dollar-valued setting, owner-only
     return SystemStatus(
         db=ServiceStatus(name="Neon Postgres", ok=db_ok, detail=db_detail, checked_at=_now()),
         eodhd=ServiceStatus(name="EODHD", ok=eod_ok, detail=eod_detail, checked_at=_now()),
