@@ -244,8 +244,11 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   `vercel.json` now rewrites extension-less non-API paths to `/index.html`. Local `main` is ahead of `origin/main`
   (not pushed; the owner's call). Cosmetic leftover for Phase 6: the "Show all 0 candidates" toggle on a no-candidate
   analysis.
-- **Phase 6 (option position tracking): built 2026-09-09, uncommitted pending owner review.** Migration `0007`
-  (rendered offline, **not yet applied to Neon**: run `make migrate` before deploying), `chains.py` (band storage from
+- **Phase 6 (option position tracking): built, approved, committed `c730dbe` on `phase-6-positions`, merged to
+  `main`, migrations `0007` + `0008` applied to Neon, deployed and promoted on 2026-09-09
+  (`trade-thesis-b2kljs554-max-d0ec.vercel.app`), pushed to `origin/main`.** Verified with `make verify-deploy`
+  (all checks; idea 7 ORCL analysis: trade, 23 candidates, template rationale) and a throwaway position on idea 7
+  (take with a stated contract count, public masking, mark now, delete with no timeline residue). `chains.py` (band storage from
   every selector run and daily mark, ET record dates, ATM IV series, 1-year percentile after 20 stored days),
   `positions.py` (pure exit engine with one test per exit reason, daily marks, expiry settlement, take/close),
   `routers/positions.py`, Review divergence matrix, `StatsOut.option_beat_thesis`, Idea detail dual P&L + callout +
