@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { IdeaOut, StatsOut } from "../lib/types";
-import { fmtDate, fmtMoney, fmtPct } from "../lib/format";
+import { exitReasonLabel, fmtDate, fmtMoney, fmtPct, pnlColor } from "../lib/format";
 import { Notice, Panel, StatTile } from "../components/Panel";
 import { DirectionTag, IdeaLink, Pnl, ProgressBar, StatusPill, TypeTag } from "../components/IdeaBits";
 
@@ -24,6 +24,16 @@ function heroSentence(s?: StatsOut): React.ReactNode {
       {s.ideas_logged} {s.ideas_logged === 1 ? "idea" : "ideas"} logged. Right on direction{" "}
       <em className="not-italic font-bold">{fmtPct(s.direction_hit_rate, 0, false)}</em> of the time, full target hit{" "}
       <em className="not-italic font-bold">{fmtPct(s.target_hit_rate, 0, false)}</em>.
+      {s.positions_closed > 0 && (
+        <>
+          {" "}
+          The option beat the thesis in{" "}
+          <em className="not-italic font-bold">
+            {s.option_beat_thesis} of {s.positions_closed}
+          </em>{" "}
+          {s.positions_closed === 1 ? "trade" : "trades"}.
+        </>
+      )}
     </>
   );
 }
@@ -43,6 +53,7 @@ export function Ledger() {
   const [type, setType] = useState<string>("all");
   const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
+  const [expression, setExpression] = useState<string>("all");
 
   const stats = useQuery({ queryKey: ["stats"], queryFn: () => api.get<StatsOut>("/api/stats") });
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: () => api.get<IdeaOut[]>("/api/ideas") });
@@ -53,13 +64,16 @@ export function Ledger() {
       if (status !== "all" && i.status !== status) return false;
       if (type !== "all" && i.idea_type !== type) return false;
       if (tag && !i.tags.includes(tag.toLowerCase())) return false;
+      if (expression === "with" && !i.position) return false;
+      if (expression === "open" && i.position?.status !== "open") return false;
+      if (expression === "paper" && i.position) return false;
       if (q) {
         const hay = `${i.title} ${i.thesis_text} ${i.instrument.symbol} ${i.instrument.display_name}`.toLowerCase();
         if (!hay.includes(q.toLowerCase())) return false;
       }
       return true;
     });
-  }, [ideas.data, status, type, tag, q]);
+  }, [ideas.data, status, type, tag, q, expression]);
 
   const allTags = useMemo(() => Array.from(new Set((ideas.data ?? []).flatMap((i) => i.tags))).sort(), [ideas.data]);
   const s = stats.data;
@@ -125,6 +139,12 @@ export function Ledger() {
               <option value="real">Real</option>
               <option value="paper">Paper</option>
             </select>
+            <select value={expression} onChange={(e) => setExpression(e.target.value)} className="rounded border border-line bg-bg px-2 py-1">
+              <option value="all">Any expression</option>
+              <option value="with">With option</option>
+              <option value="open">Option open</option>
+              <option value="paper">Thesis only</option>
+            </select>
             <select value={tag} onChange={(e) => setTag(e.target.value)} className="rounded border border-line bg-bg px-2 py-1">
               <option value="">All tags</option>
               {allTags.map((t) => (
@@ -155,7 +175,8 @@ export function Ledger() {
                   <th className="py-2 pr-3 font-normal">Window</th>
                   <th className="py-2 pr-3 font-normal">Entry</th>
                   <th className="py-2 pr-3 font-normal">Progress</th>
-                  <th className="py-2 pr-3 text-right font-normal">P&amp;L</th>
+                  <th className="py-2 pr-3 text-right font-normal">Underlying</th>
+                  <th className="py-2 pr-3 text-right font-normal">Option</th>
                   <th className="py-2 font-normal">Status</th>
                 </tr>
               </thead>
@@ -195,6 +216,19 @@ export function Ledger() {
                     </td>
                     <td className="py-2.5 pr-3 text-right">
                       <Pnl idea={i} />
+                    </td>
+                    <td className="py-2.5 pr-3 text-right">
+                      {i.position ? (
+                        <div className="num text-sm" style={{ color: pnlColor(i.position.pnl_pct) }} title={`${i.position.kind} · ${exitReasonLabel(i.position.exit_reason)}`}>
+                          {fmtPct(i.position.pnl_pct, 0)}
+                          <div className="text-[11px] text-muted">
+                            {i.position.name.replace(/^\S+ /, "")}
+                            {i.position.status === "closed" ? ` · ${exitReasonLabel(i.position.exit_reason)}` : ""}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted">–</span>
+                      )}
                     </td>
                     <td className="py-2.5">
                       <StatusPill status={i.status} />

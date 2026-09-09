@@ -3,10 +3,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, getWriteToken } from "../lib/api";
 import type { IdeaDetail as IdeaDetailT, OptionAnalysis, SystemStatus } from "../lib/types";
-import { fmtDate, fmtDateTime, fmtMoney, fmtPct, pnlColor } from "../lib/format";
+import { exitReasonLabel, fmtDate, fmtDateTime, fmtMoney, fmtPct, pnlColor } from "../lib/format";
 import { Notice, Panel } from "../components/Panel";
 import { DirectionTag, StatusPill, TypeTag } from "../components/IdeaBits";
 import { PriceChart } from "../components/PriceChart";
+import { PositionPanel } from "../components/PositionPanel";
 
 export function IdeaDetail() {
   const { id } = useParams();
@@ -91,6 +92,21 @@ export function IdeaDetail() {
       {seedNote && <Notice tone="accent">Seed placeholder: {seedNote}</Notice>}
       {refreshError && <Notice tone="wrong">Price history could not be fetched at creation: {String(refreshError.error)}. Use Resolve now.</Notice>}
       {err && <Notice tone="wrong">{err}</Notice>}
+      {i.divergence && (
+        <div
+          className="rounded-md border bg-surface-2 px-3 py-2 text-sm"
+          style={{
+            borderColor: divergenceColor(i.divergence.cell),
+            color: i.divergence.resolved ? divergenceColor(i.divergence.cell) : "var(--color-text)",
+          }}
+        >
+          <span className="mr-2 text-xs text-muted">Thesis versus expression</span>
+          {i.divergence.text}
+          {i.divergence.option_beat_thesis !== null && (
+            <span className="ml-2 text-xs text-muted">{i.divergence.option_beat_thesis ? "The option is ahead of the thesis." : "The thesis is ahead of the option."}</span>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Panel title="Thesis" className="md:col-span-2">
@@ -104,12 +120,23 @@ export function IdeaDetail() {
         </Panel>
         <Panel title="Outcome">
           <dl className="space-y-2 text-sm">
-            <Row k="Hypothetical P&L">
+            <Row k={i.position ? "Thesis P&L, underlying" : "Hypothetical P&L"}>
               <span className="num" style={{ color: pnlColor(i.hypothetical_pnl_pct) }}>
                 {fmtPct(i.hypothetical_pnl_pct, 2)}
                 {!i.dollars_hidden && i.hypothetical_pnl_abs !== null && <span className="ml-2 text-muted">{fmtMoney(i.hypothetical_pnl_abs, 0, true)}</span>}
               </span>
             </Row>
+            {i.position && (
+              <Row k="Expression P&L, on premium">
+                <span className="num" style={{ color: pnlColor(i.position.pnl_pct) }}>
+                  {fmtPct(i.position.pnl_pct, 1)}
+                  {!i.dollars_hidden && i.position.pnl_abs !== null && <span className="ml-2 text-muted">{fmtMoney(i.position.pnl_abs, 0, true)}</span>}
+                </span>
+                <div className="text-[11px] text-muted">
+                  {i.position.name} · {i.position.status === "open" ? `marked ${fmtDate(i.position.last_value_as_of)}` : exitReasonLabel(i.position.exit_reason)}
+                </div>
+              </Row>
+            )}
             <Row k="Capital assigned">
               <span className="num">{i.dollars_hidden ? "hidden" : fmtMoney(i.capital_assigned)}</span>
             </Row>
@@ -168,7 +195,12 @@ export function IdeaDetail() {
                         ? "…"
                         : "open analysis"}
                 </Link>
-                {analysis.data && <div className="text-[11px] text-muted">{fmtDateTime(analysis.data.created_at)} · position tracking arrives in Phase 6</div>}
+                {analysis.data && (
+                  <div className="text-[11px] text-muted">
+                    analysed {fmtDateTime(analysis.data.created_at)}
+                    {i.position ? "" : i.status === "open" ? " · no position taken" : ""}
+                  </div>
+                )}
               </Row>
             )}
             {i.status !== "open" && (
@@ -194,6 +226,8 @@ export function IdeaDetail() {
           events={i.events}
         />
       </Panel>
+
+      {i.position && <PositionPanel positionId={i.position.id} ideaId={i.id} canWrite={canWrite} />}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Panel title="Timeline" className="md:col-span-2">
@@ -260,5 +294,13 @@ function eventColor(t: string): string {
   if (t === "target_hit") return "var(--color-right)";
   if (t === "stop_hit") return "var(--color-wrong)";
   if (t === "progress") return "var(--color-open)";
+  if (t.startsWith("position_")) return "var(--color-accent)";
   return "var(--color-muted)";
+}
+
+function divergenceColor(cell: string | null): string {
+  if (cell === "thesis_right_option_won") return "var(--color-right)";
+  if (cell === "thesis_right_option_lost" || cell === "thesis_wrong_option_won") return "var(--color-accent)";
+  if (cell === "thesis_wrong_option_lost") return "var(--color-wrong)";
+  return "var(--color-line)";
 }

@@ -240,6 +240,9 @@ class IdeaOut(BaseModel):
     progress_kind: str
     seed: bool
     dollars_hidden: bool
+    position: PositionSummary | None = None  # the open position, else the latest closed one (Phase 6)
+    positions_count: int = 0
+    divergence: dict[str, Any] | None = None  # thesis-versus-expression facts once a position exists
     created_at: datetime
     updated_at: datetime
 
@@ -270,6 +273,9 @@ class StatsOut(BaseModel):
     by_regime: list[RegimeBucket]
     resolving_soon: list[IdeaOut]
     dollars_hidden: bool
+    positions_open: int = 0
+    positions_closed: int = 0
+    option_beat_thesis: int = 0  # closed positions whose return on premium beat the idea's underlying return
 
 
 class JobSummary(BaseModel):
@@ -280,6 +286,7 @@ class JobSummary(BaseModel):
     bars_added: int = 0
     resolved: list[dict[str, Any]] = Field(default_factory=list)
     errors: list[dict[str, Any]] = Field(default_factory=list)
+    positions: dict[str, Any] | None = None  # Phase 6: the position marks/closes of this run
 
 
 class ParseRequest(BaseModel):
@@ -357,3 +364,106 @@ class OptionAnalysisOut(BaseModel):
     shares_comparison: dict[str, Any]
     params: dict[str, Any]
     dollars_hidden: bool
+
+
+# --- option positions (Phase 6) -----------------------------------------------------------------------------------
+
+
+class PositionTake(BaseModel):
+    """Take an expression from the latest stored analysis. Exit rules default to Settings when omitted; `contracts`
+    defaults to floor(capital_assigned / cost) at the fresh quote; `fill_price` records the owner's actual fill."""
+
+    candidate_name: str | None = None
+    rank: int | None = Field(default=None, ge=1)
+    contracts: int | None = Field(default=None, ge=1, le=10_000)
+    fill_price: float | None = Field(default=None, gt=0)
+    take_profit_pct: float | None = Field(default=None, gt=0, le=10_000)
+    stop_loss_pct: float | None = Field(default=None, gt=0, le=100)
+    time_stop_days_before_expiry: int | None = Field(default=None, ge=0, le=365)
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _one_of(self):
+        if not self.candidate_name and not self.rank:
+            raise ValueError("candidate_name or rank is required")
+        return self
+
+
+class PositionUpdate(BaseModel):
+    """Edit the exit rules of an open position."""
+
+    take_profit_pct: float | None = Field(default=None, gt=0, le=10_000)
+    stop_loss_pct: float | None = Field(default=None, gt=0, le=100)
+    time_stop_days_before_expiry: int | None = Field(default=None, ge=0, le=365)
+    note: str | None = None
+
+
+class PositionClose(BaseModel):
+    exit_price: float | None = Field(default=None, gt=0)
+    note: str | None = None
+
+
+class OptionSnapshotOut(BaseModel):
+    as_of: date
+    value: float
+    bid: float | None
+    ask: float | None
+    pnl_pct: float
+    pnl_abs: float | None  # null when dollars are hidden
+    spot: float | None
+    iv: float | None
+    delta: float | None
+    theta: float | None
+    source: str
+    legs: list[dict[str, Any]]
+    created_at: datetime
+
+
+class PositionSummary(BaseModel):
+    id: int
+    name: str
+    kind: str
+    status: str
+    exit_reason: str | None
+    expiry: date
+    contracts: int | None
+    pnl_pct: float | None
+    pnl_abs: float | None
+    last_value: float | None
+    last_value_as_of: date | None
+
+
+class PositionOut(BaseModel):
+    id: int
+    idea_id: int
+    analysis_id: int | None
+    name: str
+    structure: str
+    kind: str
+    legs: list[dict[str, Any]]
+    expiry: date
+    contracts: int | None  # null when dollars are hidden
+    entry_debit: float
+    entry_cost: float | None
+    entry_as_of: datetime
+    entry_source: str
+    entry_spot: float | None
+    take_profit_pct: float
+    stop_loss_pct: float
+    time_stop_days_before_expiry: int
+    time_stop_date: date
+    status: str
+    exit_reason: str | None
+    exit_value: float | None
+    exit_as_of: date | None
+    exit_source: str | None
+    closed_at: datetime | None
+    pnl_pct: float | None
+    pnl_abs: float | None
+    last_value: float | None
+    last_value_as_of: date | None
+    note: str | None
+    snapshots: list[OptionSnapshotOut]
+    dollars_hidden: bool
+    created_at: datetime
+    updated_at: datetime

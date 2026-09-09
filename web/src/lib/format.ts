@@ -89,3 +89,13 @@ export function pnlColor(v: number | null | undefined): string {
   if (v === null || v === undefined) return "var(--color-muted)";
   return v > 0 ? "var(--color-right)" : v < 0 ? "var(--color-wrong)" : "var(--color-muted)";
 }
+
+/** Position exit reasons -> sentence-case labels. `idea_resolved:<reason>` carries the idea's own reason. */
+export function exitReasonLabel(reason: string | null | undefined): string {
+  if (!reason) return "open";
+  if (reason.startsWith("idea_resolved")) {
+    const r = reason.split(":")[1] ?? "";
+    return `idea resolved${r ? ` (${r.replace(/_/g, " ").replace("expired:", "expired, ")})` : ""}`;
+  }
+  return reason.replace(/_/g, " ");
+}

@@ -85,6 +85,7 @@ template and `rationale_source` says so.
 * `account_size` is seeded from the owner's stated figure and edited in Settings; `default_risk_pct` is a share of it.
 * `risk_free_rate_pct` is seeded at 4.0 because it reprices UnicornBay's own theoretical values within about 1%;
   set it to the current bill yield in Settings.
-* The 1-year IV percentile waits for `chain_snapshots` (Phase 6); backfilling it from EODHD's per-contract `/eod`
-  history is possible but needs roughly one request per historical expiry per instrument.
+* The 1-year IV percentile now comes from `chain_snapshots` once 20 record dates exist (`docs/option-positions.md`);
+  backfilling it from EODHD's per-contract `/eod` history is possible but needs roughly one request per historical
+  expiry per instrument.
 * Dry runs: `make probe-selector args="USO.US down --target 135 --stop 148 --days 21"` (no database writes).

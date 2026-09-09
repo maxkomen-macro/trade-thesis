@@ -17,9 +17,9 @@ Phases 1 (scaffold + data-source probe), 2 (ledger core: ideas, price snapshots,
 detail pages), 3 (Anthropic-backed thesis parser and the New Thesis page) and 4 (Review, Settings, deploy) are live.
 Phase 5, the options expression selector, is live: Black-Scholes pricing with tests written first, candidate
 generation from the live EODHD chain, scoring, scenario heatmaps, a payoff chart, and a shares comparison, gated
-behind `settings.options_enabled` (`docs/options-selector.md`). Phase 6 (taking a position,
-daily marks, exit rules, the thesis-versus-option divergence table) is next. See `CLAUDE.md` → *State of the build*
-and `docs/eodhd-probe.md`.
+behind `settings.options_enabled` (`docs/options-selector.md`). Phase 6 (taking a position, daily marks from the
+stored chain, exit rules in a fixed order, dual P&L, and the thesis-versus-expression matrix) is built and awaiting
+review (`docs/option-positions.md`). See `CLAUDE.md` → *State of the build* and `docs/eodhd-probe.md`.
 
 ## Stack
 

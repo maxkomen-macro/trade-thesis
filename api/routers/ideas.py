@@ -3,6 +3,7 @@ Dollar figures are masked for non-writers when public_hide_dollars is on."""
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 import anthropic
@@ -43,7 +44,7 @@ def _load(db: Session, idea_id: int) -> Idea:
     # populate_existing: the resolver adds events via the session, so a re-load must refresh the collection.
     idea = db.execute(
         select(Idea)
-        .options(selectinload(Idea.instrument), selectinload(Idea.events))
+        .options(selectinload(Idea.instrument), selectinload(Idea.events), selectinload(Idea.positions))
         .where(Idea.id == idea_id)
         .execution_options(populate_existing=True)
     ).scalar_one_or_none()
@@ -66,7 +67,12 @@ def list_ideas(
     q: str | None = Query(default=None),
     limit: int = Query(default=200, le=500),
 ) -> list[IdeaOut]:
-    stmt = select(Idea).options(selectinload(Idea.instrument)).order_by(Idea.created_at.desc()).limit(limit)
+    stmt = (
+        select(Idea)
+        .options(selectinload(Idea.instrument), selectinload(Idea.positions))
+        .order_by(Idea.created_at.desc())
+        .limit(limit)
+    )
     if status:
         stmt = stmt.where(Idea.status == status)
     if idea_type:
@@ -88,10 +94,19 @@ def list_ideas(
 @router.get("/stats", response_model=StatsOut)
 def stats(request: Request, db: Session = Depends(get_db)) -> StatsOut:
     hide = hide_dollars_for(request)
-    all_ideas = db.execute(select(Idea).options(selectinload(Idea.instrument))).scalars().all()
+    all_ideas = (
+        db.execute(select(Idea).options(selectinload(Idea.instrument), selectinload(Idea.positions))).scalars().all()
+    )
     # Placeholder (seed) ideas never move the numbers; they only appear in the table with a tag.
     ideas = [i for i in all_ideas if not ledger.is_seed(i)]
     today = ledger.today_utc()
+    positions = [p for i in ideas for p in (i.positions or [])]
+    closed = [(i, p) for i in ideas for p in (i.positions or []) if p.status == "closed"]
+    beat = sum(
+        1
+        for i, p in closed
+        if p.pnl_pct is not None and i.hypothetical_pnl_pct is not None and p.pnl_pct > i.hypothetical_pnl_pct
+    )
     resolved = [i for i in ideas if i.status in ("right", "wrong", "expired")]
     dir_flags = [ledger.direction_right_of(i) for i in resolved]
     dir_known = [f for f in dir_flags if f is not None]
@@ -132,6 +147,9 @@ def stats(request: Request, db: Session = Depends(get_db)) -> StatsOut:
         by_regime=by_regime,
         resolving_soon=[ledger.to_idea_out(i, hide, today) for i in soon[:10]],
         dollars_hidden=hide,
+        positions_open=sum(1 for p in positions if p.status == "open"),
+        positions_closed=len(closed),
+        option_beat_thesis=beat,
     )
 
 
@@ -236,11 +254,19 @@ def close_idea(idea_id: int, body: IdeaClose, db: Session = Depends(get_db)) -> 
 @router.post("/ideas/{idea_id}/resolve", response_model=IdeaDetail, dependencies=[WriteAuth])
 def resolve_now(idea_id: int, db: Session = Depends(get_db)) -> IdeaDetail:
     idea = _load(db, idea_id)
+    client = EODHDClient()
     try:
-        ledger.resolve_idea(db, idea, EODHDClient())
+        ledger.resolve_idea(db, idea, client)
     except EODHDError as exc:
         db.rollback()
         raise _eodhd_http(exc) from exc
+    # Phase 6: mark this idea's open position from today's chain and apply its exit rules. Chain failures are
+    # returned by POST /api/positions/{id}/mark; here they only reach the log.
+    from api.services import positions
+
+    summary = positions.mark_positions(db, client, idea_id=idea_id)
+    for err in summary.get("errors", []):
+        logging.getLogger("tt.positions").warning("mark failed on resolve: %s", err)
     return ledger.to_idea_detail(db, _load(db, idea_id), hide_dollars=False)
 
 

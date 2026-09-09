@@ -9,8 +9,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.db.models import Idea, Instrument, PriceSnapshot, ResolutionEvent
-from api.db.schemas import BarOut, EventOut, IdeaDetail, IdeaOut, InstrumentOut, JobSummary
+from api.db.models import Idea, Instrument, OptionPosition, PriceSnapshot, ResolutionEvent
+from api.db.schemas import BarOut, EventOut, IdeaDetail, IdeaOut, InstrumentOut, JobSummary, PositionSummary
 from api.services import prices
 from api.services.eodhd import EODHDClient, EODHDError
 from api.services.resolver import Bar, Context, _bench_at, decide, in_window, progress_pct, spread_pct
@@ -268,6 +268,14 @@ def run_resolver(db: Session, client: EODHDClient | None = None, today: date | N
         except EODHDError as exc:
             db.rollback()
             summary.errors.append({"idea_id": idea.id, "symbol": idea.instrument.symbol, **exc.to_dict()})
+    # Option positions (Phase 6): marks from today's chain, then the exit rules. Runs after the ideas so an idea
+    # that resolved today closes its position on the same run.
+    from api.services import chains as _chains
+    from api.services import positions as _positions
+
+    summary.positions = _positions.mark_positions(db, client, today)
+    # Retention: band rows older than CHAIN_RETENTION_DAYS roll down to chain_daily_summary (after the marks).
+    summary.positions["rollup"] = _chains.rollup_chain_snapshots(db, today)
     return summary
 
 
@@ -300,6 +308,9 @@ def refresh_prices(db: Session, client: EODHDClient | None = None, today: date |
                 summary.resolved.append(res)
         except EODHDError as exc:
             summary.errors.append({"idea_id": idea.id, **exc.to_dict()})
+    from api.services import positions as _positions
+
+    summary.positions = _positions.mark_positions(db, client, today)
     return summary
 
 
@@ -322,6 +333,57 @@ def direction_right_of(idea: Idea) -> bool | None:
     return None
 
 
+def primary_position(idea: Idea) -> OptionPosition | None:
+    """The open position, else the most recently opened closed one."""
+    rows = list(idea.positions or [])
+    if not rows:
+        return None
+    open_ = [p for p in rows if p.status == "open"]
+    return open_[-1] if open_ else max(rows, key=lambda p: (p.created_at or datetime.min.replace(tzinfo=UTC), p.id))
+
+
+def divergence_of(idea: Idea, pos: OptionPosition | None) -> dict[str, Any] | None:
+    """Thesis-versus-expression facts for the detail page and the Review matrix. `cell` is set only once both the
+    idea and the position are resolved: thesis right/wrong is the direction flag, option won/lost is the sign of
+    the return on premium."""
+    if pos is None:
+        return None
+    thesis = idea.hypothetical_pnl_pct
+    option = pos.pnl_pct
+    thesis_right = direction_right_of(idea)
+    option_won = (option > 0) if option is not None else None
+    resolved = idea.status != "open" and pos.status == "closed"
+    cell = None
+    if resolved and thesis_right is not None and option_won is not None:
+        cell = f"thesis_{'right' if thesis_right else 'wrong'}_option_{'won' if option_won else 'lost'}"
+    beat = (option > thesis) if (option is not None and thesis is not None) else None
+    sym = idea.instrument.symbol.rsplit(".", 1)[0]
+    t = f"{thesis:+.1f}%" if thesis is not None else "not marked yet"
+    o = f"{option:+.0f}%" if option is not None else "not marked yet"
+    if cell == "thesis_right_option_won":
+        text = f"Right call, right contract: {sym} moved {t} for the thesis and {pos.name} made {o} on premium."
+    elif cell == "thesis_right_option_lost":
+        text = f"Right call, wrong contract: {sym} moved {t} for the thesis but {pos.name} lost {o} on premium."
+    elif cell == "thesis_wrong_option_won":
+        text = f"Wrong call, lucky contract: {sym} moved {t} against the thesis yet {pos.name} made {o} on premium."
+    elif cell == "thesis_wrong_option_lost":
+        text = f"Wrong call, wrong contract: {sym} moved {t} against the thesis and {pos.name} lost {o} on premium."
+    else:
+        text = (
+            f"Thesis {t} on the underlying; {pos.name} {o} on premium ({'open' if pos.status == 'open' else 'closed'})."
+        )
+    return {
+        "thesis_pnl_pct": thesis,
+        "option_pnl_pct": option,
+        "thesis_right": thesis_right,
+        "option_won": option_won,
+        "option_beat_thesis": beat,
+        "cell": cell,
+        "resolved": resolved,
+        "text": text,
+    }
+
+
 def to_idea_out(idea: Idea, hide_dollars: bool, today: date | None = None) -> IdeaOut:
     today = today or today_utc()
     entry = idea.entry_price or 0.0
@@ -334,6 +396,7 @@ def to_idea_out(idea: Idea, hide_dollars: bool, today: date | None = None) -> Id
     )
     prog, kind = progress_pct(ctx, idea.success_rule_json, idea.last_price, today) if entry else (0.0, "time")
     seed = is_seed(idea)
+    pos = primary_position(idea)
     return IdeaOut(
         id=idea.id,
         instrument=InstrumentOut.model_validate(idea.instrument),
@@ -383,8 +446,27 @@ def to_idea_out(idea: Idea, hide_dollars: bool, today: date | None = None) -> Id
         progress_kind=kind,
         seed=seed,
         dollars_hidden=hide_dollars,
+        position=_position_summary(pos, hide_dollars) if pos else None,
+        positions_count=len(idea.positions or []),
+        divergence=divergence_of(idea, pos),
         created_at=idea.created_at,
         updated_at=idea.updated_at,
+    )
+
+
+def _position_summary(pos: OptionPosition, hide_dollars: bool) -> PositionSummary:
+    return PositionSummary(
+        id=pos.id,
+        name=pos.name,
+        kind=pos.kind,
+        status=pos.status,
+        exit_reason=pos.exit_reason,
+        expiry=pos.expiry,
+        contracts=None if hide_dollars else pos.contracts,
+        pnl_pct=pos.pnl_pct,
+        pnl_abs=None if hide_dollars else pos.pnl_abs,
+        last_value=pos.last_value,
+        last_value_as_of=pos.last_value_as_of,
     )
 
 

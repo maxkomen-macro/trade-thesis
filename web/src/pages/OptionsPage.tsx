@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, getWriteToken } from "../lib/api";
-import type { IdeaDetail, OptionAnalysis, OptionCandidate, SystemStatus } from "../lib/types";
-import { fmtDate, fmtDateTime, fmtMoney, fmtPct, fmtPrice } from "../lib/format";
+import type { IdeaDetail, OptionAnalysis, OptionCandidate, PositionOut, PositionTake, SystemStatus } from "../lib/types";
+import { exitReasonLabel, fmtDate, fmtDateTime, fmtMoney, fmtPct, fmtPrice } from "../lib/format";
 import { Notice, Panel } from "../components/Panel";
 import { PayoffChart } from "../components/PayoffChart";
 
@@ -22,6 +22,8 @@ export function OptionsPage() {
     queryFn: () => api.get<OptionAnalysis>(`/api/ideas/${id}/options`),
     retry: false,
   });
+  const positions = useQuery({ queryKey: ["positions", id], queryFn: () => api.get<PositionOut[]>(`/api/ideas/${id}/positions`) });
+  const openPosition = positions.data?.find((p) => p.status === "open") ?? null;
   const [inverse, setInverse] = useState("");
   const [leverage, setLeverage] = useState("2");
   const [err, setErr] = useState<string | null>(null);
@@ -140,13 +142,28 @@ export function OptionsPage() {
         <Notice tone="wrong">EODHD could not supply {a.params.errors.map((e) => String(e.what)).join(", ")}: {String(a.params.errors[0].error)}</Notice>
       )}
 
+      {openPosition && (
+        <Notice tone="accent">
+          Position open on this idea: <span className="num">{openPosition.name}</span>, {openPosition.pnl_pct != null ? fmtPct(openPosition.pnl_pct, 0) : "–"} on premium
+          {openPosition.last_value_as_of ? ` as of ${fmtDate(openPosition.last_value_as_of)}` : ""}.{" "}
+          <Link to={`/ideas/${id}`} className="underline">
+            Marks and exit rules are on the idea page.
+          </Link>
+        </Notice>
+      )}
+      {!openPosition && positions.data && positions.data.length > 0 && (
+        <p className="text-xs text-muted">
+          Earlier expression on this idea: {positions.data.map((p) => `${p.name} (${exitReasonLabel(p.exit_reason)}, ${fmtPct(p.pnl_pct, 0)})`).join("; ")}.
+        </p>
+      )}
+
       {a && a.candidates.filter((c) => c.rank).length > 0 && (
         <div className="grid items-start gap-5 md:grid-cols-[1.35fr_1fr_1fr]">
           {a.candidates
             .filter((c) => c.rank)
             .slice(0, 3)
             .map((c, idx) => (
-              <CandidateCard key={c.name} c={c} idx={idx} a={a} />
+              <CandidateCard key={c.name} c={c} idx={idx} a={a} idea={i} openPosition={openPosition} settings={status.data?.settings} canWrite={canWrite} />
             ))}
         </div>
       )}
@@ -179,10 +196,19 @@ export function OptionsPage() {
               ? " Rationale text is from templates (the model was unavailable or added a figure not in its input)."
               : ` Rationale text written by ${a.params.rationale?.model ?? "the model"} from the computed numbers only.`}
           </p>
-          <button onClick={() => setShowAll((v) => !v)} className="mt-2 underline">
-            {showAll ? "Hide the full candidate list" : `Show all ${a.candidates.length} candidates`}
-          </button>
-          {showAll && <AllCandidates a={a} />}
+          {a.params.iv_percentile && (
+            <p className="mt-1">
+              IV percentile: {a.iv_percentile_1y != null ? `${a.iv_percentile_1y.toFixed(0)}th of the trailing year (${String(a.params.iv_percentile.note)})` : String(a.params.iv_percentile.note)}
+            </p>
+          )}
+          {a.candidates.length > 0 ? (
+            <button onClick={() => setShowAll((v) => !v)} className="mt-2 underline">
+              {showAll ? "Hide the full candidate list" : `Show all ${a.candidates.length} candidates`}
+            </button>
+          ) : (
+            <p className="mt-2">No candidates were built for this idea, so there is no list to show.</p>
+          )}
+          {showAll && a.candidates.length > 0 && <AllCandidates a={a} />}
         </section>
       )}
     </div>
@@ -288,9 +314,26 @@ function VehicleRow({ label, value, tone, note }: { label: string; value: string
 
 const RANK_LABEL = ["Best fit", "Second", "Third"];
 
-function CandidateCard({ c, idx, a }: { c: OptionCandidate; idx: number; a: OptionAnalysis }) {
+function CandidateCard({
+  c,
+  idx,
+  a,
+  idea,
+  openPosition,
+  settings,
+  canWrite,
+}: {
+  c: OptionCandidate;
+  idx: number;
+  a: OptionAnalysis;
+  idea: IdeaDetail | null;
+  openPosition: PositionOut | null;
+  settings: Record<string, unknown> | undefined;
+  canWrite: boolean;
+}) {
   const best = idx === 0 && a.verdict === "trade";
   const hidden = a.dollars_hidden;
+  const [taking, setTaking] = useState(false);
   const ret = c.ret_at_target_window_end_pct ?? null;
   const cushionTone = c.cushion_days < 0 ? "text-wrong" : "text-muted";
   return (
@@ -365,14 +408,111 @@ function CandidateCard({ c, idx, a }: { c: OptionCandidate; idx: number; a: Opti
       {c.grid && <Heatmap c={c} />}
 
       {c.why && <p className="mt-4 border-t border-line pt-3 text-[13px] text-muted">{c.why}</p>}
-      <button
-        disabled
-        title="Position tracking (take this expression, exit rules, daily marks) arrives in Phase 6"
-        className={`mt-4 w-full rounded-md px-3 py-2 text-sm ${best ? "bg-accent font-semibold text-bg" : "border border-line"} opacity-50`}
-      >
-        {best ? "Take this expression" : "Take this instead"} · Phase 6
-      </button>
+      {taking && idea ? (
+        <TakeForm c={c} idea={idea} settings={settings} onDone={() => setTaking(false)} />
+      ) : (
+        <button
+          onClick={() => setTaking(true)}
+          disabled={!canWrite || !idea || idea.status !== "open" || Boolean(openPosition) || !c.passes_filters}
+          title={
+            !canWrite
+              ? "Paste the write token in Settings to take an expression"
+              : openPosition
+                ? `A position is already open on this idea (${openPosition.name})`
+                : idea && idea.status !== "open"
+                  ? "Only open ideas can be expressed"
+                  : "Quote every leg afresh, set the exit rules, and start daily marks"
+          }
+          className={`mt-4 w-full rounded-md px-3 py-2 text-sm ${best ? "bg-accent font-semibold text-bg" : "border border-line hover:border-accent"} disabled:opacity-50`}
+        >
+          {best ? "Take this expression" : "Take this instead"}
+        </button>
+      )}
     </div>
+  );
+}
+
+/** Take-this-expression form: contracts (from the idea's capital at the analysis debit), an optional real fill,
+ *  and the three exit rules prefilled from Settings. The server re-quotes every leg before storing anything. */
+function TakeForm({ c, idea, settings, onDone }: { c: OptionCandidate; idea: IdeaDetail; settings: Record<string, unknown> | undefined; onDone: () => void }) {
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const [contracts, setContracts] = useState(c.contracts ? String(c.contracts) : "1");
+  const [fill, setFill] = useState("");
+  const [tp, setTp] = useState(String(settings?.default_take_profit_pct ?? 100));
+  const [sl, setSl] = useState(String(settings?.default_stop_loss_pct ?? 50));
+  const [ts, setTs] = useState(String(settings?.default_time_stop_days_before_expiry ?? 5));
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const take = useMutation({
+    mutationFn: () => {
+      const body: PositionTake = {
+        candidate_name: c.name,
+        contracts: Number(contracts) > 0 ? Number(contracts) : undefined,
+        fill_price: fill.trim() ? Number(fill) : undefined,
+        take_profit_pct: Number(tp),
+        stop_loss_pct: Number(sl),
+        time_stop_days_before_expiry: Number(ts),
+        note: note.trim() || undefined,
+      };
+      return api.post<PositionOut>(`/api/ideas/${idea.id}/positions`, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["positions", String(idea.id)] });
+      qc.invalidateQueries({ queryKey: ["idea", String(idea.id)] });
+      qc.invalidateQueries({ queryKey: ["ideas"] });
+      nav(`/ideas/${idea.id}`);
+    },
+    onError: (e) => setErr(describeError(e)),
+  });
+  const expiry = new Date(c.expiry + "T00:00:00");
+  const timeStop = new Date(expiry.getTime() - Number(ts || 0) * 86_400_000);
+  return (
+    <div className="mt-4 rounded-md border border-accent/50 bg-surface-2 p-3 text-[13px]">
+      <div className="mb-2 font-medium">Take {c.name}</div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <Field label="Contracts">
+          <input value={contracts} onChange={(e) => setContracts(e.target.value)} className="num w-full rounded border border-line bg-bg px-2 py-1 text-right outline-none focus:border-accent" />
+        </Field>
+        <Field label="Fill (optional)">
+          <input value={fill} onChange={(e) => setFill(e.target.value)} placeholder={c.debit != null ? `mid ${c.debit.toFixed(2)}` : "mid"} className="num w-full rounded border border-line bg-bg px-2 py-1 text-right outline-none focus:border-accent" />
+        </Field>
+        <Field label="Stop loss, % of premium">
+          <input value={sl} onChange={(e) => setSl(e.target.value)} className="num w-full rounded border border-line bg-bg px-2 py-1 text-right outline-none focus:border-accent" />
+        </Field>
+        <Field label="Take profit, % of premium">
+          <input value={tp} onChange={(e) => setTp(e.target.value)} className="num w-full rounded border border-line bg-bg px-2 py-1 text-right outline-none focus:border-accent" />
+        </Field>
+        <Field label="Time stop, days before expiry">
+          <input value={ts} onChange={(e) => setTs(e.target.value)} className="num w-full rounded border border-line bg-bg px-2 py-1 text-right outline-none focus:border-accent" />
+        </Field>
+        <Field label="Note">
+          <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded border border-line bg-bg px-2 py-1 outline-none focus:border-accent" />
+        </Field>
+      </div>
+      <p className="mt-2 text-[11px] text-muted">
+        Exit rules prefilled from Settings. Time stop lands on {timeStop.toLocaleDateString("en-US", { month: "short", day: "numeric" })}; expiry {fmtDate(c.expiry)}. Entry is the
+        structure mid from a fresh quote of every leg unless you state a fill. Marks come from the daily chain; nothing is modeled.
+      </p>
+      {err && <div className="mt-2 text-wrong">{err}</div>}
+      <div className="mt-3 flex gap-2">
+        <button onClick={() => take.mutate()} disabled={take.isPending} className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-bg disabled:opacity-50">
+          {take.isPending ? "Quoting legs…" : "Open position"}
+        </button>
+        <button onClick={onDone} className="rounded-md border border-line px-3 py-1.5 text-sm">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-0.5 block text-[11px] text-muted">{label}</span>
+      {children}
+    </label>
   );
 }
 

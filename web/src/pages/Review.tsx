@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { ReviewBucket, ReviewOut } from "../lib/types";
-import { fmtMoney, fmtPct, pnlColor } from "../lib/format";
+import type { DivergenceCell, ReviewBucket, ReviewOut } from "../lib/types";
+import { Link } from "react-router-dom";
+import { exitReasonLabel, fmtMoney, fmtPct, pnlColor } from "../lib/format";
 import { Notice } from "../components/Panel";
 
 /** Breakdowns per design/trade-thesis-mockup.html: the thesis-versus-expression matrix and the regime bars,
@@ -32,13 +33,16 @@ export function Review() {
               <div className="self-end pb-1 text-xs text-muted">Option won</div>
               <div className="self-end pb-1 text-xs text-muted">Option lost</div>
               <div className="self-center text-xs text-muted">Thesis right</div>
-              <Cell c={r.divergence.thesis_right_option_won} hot />
-              <Cell c={r.divergence.thesis_right_option_lost} />
+              <Cell c={r.divergence.thesis_right_option_won} hot d="right call, right contract" />
+              <Cell c={r.divergence.thesis_right_option_lost} d="right call, wrong contract" />
               <div className="self-center text-xs text-muted">Thesis wrong</div>
-              <Cell c={r.divergence.thesis_wrong_option_won} />
-              <Cell c={r.divergence.thesis_wrong_option_lost} />
+              <Cell c={r.divergence.thesis_wrong_option_won} d="lucky, not skilled" />
+              <Cell c={r.divergence.thesis_wrong_option_lost} d="wrong call, wrong contract" />
             </div>
-            <p className="mt-3 max-w-[52ch] text-xs text-muted">{r.divergence.note}</p>
+            <p className="mt-3 max-w-[52ch] text-xs text-muted">
+              {r.divergence.note} Thesis right means the direction call was right; option won means the return on premium was positive. Both are read at the
+              close that resolved each side.
+            </p>
           </section>
 
           <section>
@@ -81,11 +85,33 @@ export function Review() {
   );
 }
 
-function Cell({ c, hot }: { c: { count: number; avg_option_pnl_pct: number | null }; hot?: boolean }) {
+function Cell({ c, hot, d }: { c: DivergenceCell; hot?: boolean; d: string }) {
   return (
-    <div className={`rounded-lg border bg-surface p-4 ${hot ? "border-accent/60" : "border-line"}`}>
+    <div className={`rounded-lg border bg-surface p-4 ${hot && c.count > 0 ? "border-accent/60" : "border-line"}`}>
       <div className="font-heading text-2xl font-semibold">{c.count}</div>
-      <div className="mt-1 text-xs text-muted">{c.avg_option_pnl_pct === null ? "no option positions yet" : `avg ${fmtPct(c.avg_option_pnl_pct, 0)} on premium`}</div>
+      <div className="mt-1 text-xs text-muted">
+        {c.avg_option_pnl_pct === null ? (
+          "no positions here yet"
+        ) : (
+          <>
+            {d}. Avg <span className="num" style={{ color: pnlColor(c.avg_option_pnl_pct) }}>{fmtPct(c.avg_option_pnl_pct, 0)}</span> on premium
+            {c.avg_thesis_pnl_pct !== null ? `, thesis ${fmtPct(c.avg_thesis_pnl_pct, 1)}` : ""}
+          </>
+        )}
+      </div>
+      {c.positions.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-[11px] text-muted">
+          {c.positions.slice(0, 4).map((p) => (
+            <li key={`${p.idea_id}-${p.name}`} className="truncate">
+              <Link to={`/ideas/${p.idea_id}`} className="hover:underline">
+                <span className="ticker text-accent">{p.symbol.replace(/\.US$/, "")}</span> {p.name}
+              </Link>{" "}
+              <span className="num">{fmtPct(p.option_pnl_pct, 0)}</span> · {exitReasonLabel(p.exit_reason)}
+            </li>
+          ))}
+          {c.positions.length > 4 && <li>and {c.positions.length - 4} more</li>}
+        </ul>
+      )}
     </div>
   );
 }

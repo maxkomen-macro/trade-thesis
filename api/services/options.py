@@ -17,8 +17,8 @@ Pipeline for POST /api/ideas/{id}/options:
 
 No number here is invented: prices, quotes, IV, OI and volume come from the stored chain rows carried in
 candidates_json; the only model assumption is the risk-free rate (settings.risk_free_rate_pct), stated in the UI.
-The IV percentile over one year needs chain history (Phase 6, chain_snapshots); until then `iv_percentile_1y` is
-null and the IV-versus-realized ratio stands in, exactly as the spec prescribes.
+The IV percentile over one year comes from stored chain history (chain_snapshots, api/services/chains.py); until
+IV_PERCENTILE_MIN_DAYS record dates exist `iv_percentile_1y` is null and the IV-versus-realized ratio stands in.
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ from sqlalchemy.orm import Session
 from api.config import settings
 from api.db.models import Idea, OptionAnalysis
 from api.db.schemas import OptionAnalysisOut
-from api.services import prices
-from api.services.eodhd import OPTIONS_CONTRACTS_PATH, EODHDClient, EODHDError
-from api.services.parser import realized_vol_pct
+from api.services import chains, prices
+from api.services.chains import realized_vol_pct
+from api.services.eodhd import EODHDClient, EODHDError
 from api.services.pricing import (
     Leg,
     breakevens,
@@ -63,13 +63,8 @@ log = logging.getLogger("tt.options")
 RATIONALE_MODEL = "claude-sonnet-4-6"
 
 # Chain request band (matches the storage band in the spec).
-CHAIN_BAND_DAYS = 120
-CHAIN_BAND_PCT = 0.25
-CHAIN_PAGE_LIMIT = 1000
-CHAIN_FIELDS = (
-    "contract,underlying_symbol,exp_date,type,strike,bid,ask,midpoint,last,volatility,delta,theta,"
-    "open_interest,volume,dte,bid_date,ask_date,tradetime"
-)
+CHAIN_BAND_DAYS = chains.BAND_DAYS
+CHAIN_BAND_PCT = chains.BAND_PCT
 
 # Candidate strike bands (fractions of spot / target).
 SINGLE_ITM_PCT = 0.10  # long options from 10% in the money ...
@@ -130,6 +125,9 @@ class SelectorInputs:
     catalyst_date: date | None = None
     inverse_symbol: str | None = None
     inverse_leverage: float | None = None
+    # 1-year at-the-money IV percentile from chain_snapshots (None until IV_PERCENTILE_MIN_DAYS of history).
+    iv_percentile_1y: float | None = None
+    iv_percentile_note: str = "needs stored chain history; IV versus 20-day realized shown instead"
 
     @property
     def bare(self) -> str:
@@ -155,106 +153,12 @@ class SelectorInputs:
         return base | ({"call", "put"} if self.wants_straddles else set())
 
 
-@dataclass(frozen=True)
-class ChainRow:
-    contract: str
-    expiry: date
-    right: str
-    strike: float
-    bid: float | None
-    ask: float | None
-    mid: float | None
-    last: float | None
-    iv: float | None
-    delta: float | None
-    theta: float | None
-    oi: int | None
-    volume: int | None
-    dte: int | None
-    bid_date: str | None
-    ask_date: str | None
-    tradetime: str | None
-
-
-def _num(v: Any) -> float | None:
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return f if math.isfinite(f) else None
-
-
-def _int(v: Any) -> int | None:
-    f = _num(v)
-    return int(f) if f is not None else None
-
-
-def normalize_chain(rows: list[dict[str, Any]]) -> list[ChainRow]:
-    """JSON:API rows -> ChainRow. Rows without a strike, expiry or type are dropped; nothing is filled in."""
-    out: list[ChainRow] = []
-    for r in rows:
-        a = r.get("attributes", r) if isinstance(r, dict) else {}
-        try:
-            expiry = date.fromisoformat(str(a["exp_date"])[:10])
-            strike = float(a["strike"])
-            right = str(a["type"]).lower()
-        except (KeyError, TypeError, ValueError):
-            continue
-        if right not in ("call", "put") or strike <= 0:
-            continue
-        mid = _num(a.get("midpoint"))
-        bid, ask = _num(a.get("bid")), _num(a.get("ask"))
-        if mid is None and bid is not None and ask is not None:
-            mid = (bid + ask) / 2.0
-        iv = _num(a.get("volatility"))
-        out.append(
-            ChainRow(
-                contract=str(a.get("contract") or r.get("id") or f"{strike}{right}{expiry}"),
-                expiry=expiry,
-                right=right,
-                strike=strike,
-                bid=bid,
-                ask=ask,
-                mid=mid,
-                last=_num(a.get("last")),
-                iv=iv if iv and iv > 0 else None,
-                delta=_num(a.get("delta")),
-                theta=_num(a.get("theta")),
-                oi=_int(a.get("open_interest")),
-                volume=_int(a.get("volume")),
-                dte=_int(a.get("dte")),
-                bid_date=a.get("bid_date"),
-                ask_date=a.get("ask_date"),
-                tradetime=a.get("tradetime"),
-            )
-        )
-    return out
-
-
-def _parse_ts(s: str | None) -> datetime | None:
-    if not s:
-        return None
-    t = str(s).strip().replace("Z", "+00:00")
-    try:
-        d = datetime.fromisoformat(t)
-    except ValueError:
-        return None
-    return d if d.tzinfo else d.replace(tzinfo=UTC)
-
-
-def chain_timestamps(rows: list[ChainRow]) -> tuple[datetime | None, date | None]:
-    """(latest quote timestamp, latest trade date) across the chain. The quote timestamps are what the row stores
-    as chain_as_of; the trade date is what the UI calls 'chain as of <date> close'."""
-    stamps = [t for t in (_parse_ts(r.bid_date) for r in rows) if t] + [
-        t for t in (_parse_ts(r.ask_date) for r in rows) if t
-    ]
-    trades = []
-    for r in rows:
-        try:
-            trades.append(date.fromisoformat(str(r.tradetime)[:10]))
-        except (TypeError, ValueError):
-            continue
-    return (max(stamps) if stamps else None), (max(trades) if trades else None)
+# Chain rows, normalization, timestamps and the band request live in api/services/chains.py (Phase 6 shares them
+# with the daily marks). The names below are kept for the selector's callers and tests.
+ChainRow = chains.Quote
+normalize_chain = chains.normalize
+chain_timestamps = chains.quote_timestamps
+_parse_ts = chains.parse_ts
 
 
 def fetch_chain(
@@ -263,62 +167,11 @@ def fetch_chain(
     band_days: int = CHAIN_BAND_DAYS,
     band_pct: float = CHAIN_BAND_PCT,
 ) -> tuple[list[ChainRow], dict[str, Any]]:
-    """Live chain within the band, one request per needed right (paged only if a page comes back full).
-    Raises EODHDError on any failure or an empty chain; nothing is synthesized."""
-    lo, hi = inp.spot * (1 - band_pct), inp.spot * (1 + band_pct)
-    for lvl in (inp.target, inp.stop):
-        if lvl:
-            lo, hi = min(lo, lvl * 0.98), max(hi, lvl * 1.02)
-    calls = 0
-    seen: dict[str, ChainRow] = {}
-    for right in sorted(inp.rights):
-        offset = 0
-        while True:
-            params = {
-                "filter[underlying_symbol]": inp.bare,
-                "filter[type]": right,
-                "filter[exp_date_from]": inp.today.isoformat(),
-                "filter[exp_date_to]": (inp.today + timedelta(days=band_days)).isoformat(),
-                "filter[strike_from]": round(lo, 2),
-                "filter[strike_to]": round(hi, 2),
-                "fields[options-contracts]": CHAIN_FIELDS,
-                "sort": "strike",
-                "page[limit]": CHAIN_PAGE_LIMIT,
-                "page[offset]": offset,
-            }
-            data = client._get(OPTIONS_CONTRACTS_PATH, params, fmt_json=False)
-            calls += 1
-            raw = data.get("data", []) if isinstance(data, dict) else []
-            if not isinstance(raw, list):
-                raise EODHDError("options chain returned an unexpected shape", status=200, path=OPTIONS_CONTRACTS_PATH)
-            for row in normalize_chain(raw):
-                if row.right == right and lo - 1e-9 <= row.strike <= hi + 1e-9:
-                    seen.setdefault(row.contract, row)
-            if len(raw) < CHAIN_PAGE_LIMIT:
-                break
-            offset += CHAIN_PAGE_LIMIT
-            if offset > 10 * CHAIN_PAGE_LIMIT:  # safety valve
-                break
-    rows = sorted(seen.values(), key=lambda r: (r.expiry, r.right, r.strike))
-    if not rows:
-        raise EODHDError(
-            f"no option contracts returned for {inp.bare} (strikes {lo:.2f}-{hi:.2f}, next {band_days} days)",
-            status=200,
-            path=OPTIONS_CONTRACTS_PATH,
-        )
-    as_of, trade_date = chain_timestamps(rows)
-    meta = {
-        "requests": calls,
-        "rows": len(rows),
-        "rights": sorted(inp.rights),
-        "strike_band": [round(lo, 2), round(hi, 2)],
-        "expiry_band_days": band_days,
-        "expiries": sorted({r.expiry.isoformat() for r in rows}),
-        "chain_as_of": as_of.isoformat() if as_of else None,
-        "chain_trade_date": trade_date.isoformat() if trade_date else None,
-        "rows_without_iv": sum(1 for r in rows if r.iv is None),
-    }
-    return rows, meta
+    """Live chain within the storage band, one request per needed right. Raises EODHDError on any failure or an
+    empty chain; nothing is synthesized."""
+    return chains.fetch_band(
+        client, inp.bare, inp.spot, inp.today, inp.rights, [inp.target, inp.stop], band_days, band_pct
+    )
 
 
 # --- candidate generation -------------------------------------------------------------------------------------------
@@ -565,10 +418,8 @@ def evaluate_candidate(inp: SelectorInputs, raw: RawCandidate) -> dict[str, Any]
     out["iv"] = _round(iv)
     out["iv_source"] = "realized_20d" if iv_fallback else "chain"
     out["iv_rv_ratio"] = _round(iv / rv, 3) if (iv and rv) else None
-    out["iv_percentile_1y"] = None
-    out["iv_percentile_note"] = (
-        "needs a year of stored chain history (Phase 6); IV versus 20-day realized shown instead"
-    )
+    out["iv_percentile_1y"] = inp.iv_percentile_1y
+    out["iv_percentile_note"] = inp.iv_percentile_note
 
     bes = breakevens(legs, debit)
     out["breakevens"] = [_round(b) for b in bes]
@@ -916,7 +767,9 @@ def _template_verdict(inp: SelectorInputs, verdict: str, reason: str, facts: dic
             bits.append(
                 f"Breakeven {best['breakeven']:.2f} spends {best['move_spent_to_breakeven_pct']:.0f}% of the move."
             )
-        if best.get("iv_rv_ratio") is not None:
+        if best.get("iv_percentile_1y") is not None:
+            bits.append(f"Implied vol sits at the {best['iv_percentile_1y']:.0f}th percentile of its stored year.")
+        elif best.get("iv_rv_ratio") is not None:
             bits.append(
                 f"Implied vol is {best['iv_rv_ratio']:.2f}x the 20-day realized vol."
                 if best["iv_rv_ratio"] >= 1.1
@@ -970,6 +823,7 @@ def rationale_payload(inp: SelectorInputs, verdict: str, reason: str, top: list[
         "open_interest",
         "iv",
         "iv_rv_ratio",
+        "iv_percentile_1y",
         "contracts",
         "at_risk",
         "max_gain_per_contract",
@@ -1085,14 +939,22 @@ def run_selector(inp: SelectorInputs, rows: list[ChainRow]) -> dict[str, Any]:
             "by_structure": {s: sum(1 for c in cands if c["structure"] == s) for s in STRUCTURE_KIND},
         },
         "iv_rv_ratio": round((sum(ivs) / len(ivs)) / (rv / 100.0), 3) if (ivs and rv) else None,
-        "iv_percentile_1y": None,
+        "iv_percentile_1y": inp.iv_percentile_1y,
+        "iv_percentile_note": inp.iv_percentile_note,
     }
 
 
 def build_inputs(
-    idea: Idea, spot: float, values: dict[str, Any], rv_pct: float | None, today: date, req
+    idea: Idea,
+    spot: float,
+    values: dict[str, Any],
+    rv_pct: float | None,
+    today: date,
+    req,
+    iv_percentile: dict[str, Any] | None = None,
 ) -> SelectorInputs:
     stop = first_level(idea.invalidation_rule_json)
+    pct = iv_percentile or {}
     return SelectorInputs(
         symbol=idea.instrument.symbol,
         direction=idea.direction,
@@ -1111,6 +973,8 @@ def build_inputs(
         catalyst_date=idea.catalyst_date,
         inverse_symbol=getattr(req, "inverse_symbol", None),
         inverse_leverage=getattr(req, "inverse_leverage", None),
+        iv_percentile_1y=pct.get("percentile"),
+        iv_percentile_note=pct.get("note") or SelectorInputs.iv_percentile_note,
     )
 
 
@@ -1140,6 +1004,12 @@ def analyze_idea(
         rv_error = exc.to_dict()
     inp = build_inputs(idea, spot, values, rv_pct, today, req)
     rows, chain_meta = fetch_chain(client, inp)
+    # Store the band (Phase 6): it feeds daily marks and the IV percentile. Then rank today's ATM IV against the
+    # stored history and re-build the inputs with the percentile (used in the score once enough days exist).
+    rec = chains.record_date(rows) or today
+    chain_meta["stored_rows"] = chains.store_band(db, inst.id, rows, rec, spot)
+    pct = chains.iv_percentile_1y(db, inst.id, rec, chains.atm_iv(rows, spot, rec))
+    inp = build_inputs(idea, spot, values, rv_pct, today, req, pct)
     body = run_selector(inp, rows)
     row = OptionAnalysis(
         idea_id=idea.id,
@@ -1175,6 +1045,7 @@ def analyze_idea(
                 "inverse_leverage": inp.inverse_leverage,
             },
             "chain": chain_meta,
+            "iv_percentile": pct,
             "sizing": body["sizing"],
             "counts": body["counts"],
             "verdict_reason": body["verdict_reason"],

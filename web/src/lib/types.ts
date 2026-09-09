@@ -109,6 +109,9 @@ export interface IdeaOut {
   progress_kind: "price" | "time";
   seed: boolean;
   dollars_hidden: boolean;
+  position: PositionSummary | null;
+  positions_count: number;
+  divergence: Divergence | null;
   created_at: string;
   updated_at: string;
 }
@@ -139,6 +142,9 @@ export interface StatsOut {
   by_regime: RegimeBucket[];
   resolving_soon: IdeaOut[];
   dollars_hidden: boolean;
+  positions_open: number;
+  positions_closed: number;
+  option_beat_thesis: number;
 }
 
 export interface JobSummary {
@@ -149,6 +155,13 @@ export interface JobSummary {
   bars_added: number;
   resolved: Array<Record<string, unknown>>;
   errors: Array<Record<string, unknown>>;
+  positions: {
+    positions_checked: number;
+    marked: Array<Record<string, unknown>>;
+    closed: Array<Record<string, unknown>>;
+    errors: Array<Record<string, unknown>>;
+    chain_requests: number;
+  } | null;
 }
 
 export interface SymbolCandidate {
@@ -213,6 +226,16 @@ export interface ReviewBucket {
 export interface DivergenceCell {
   count: number;
   avg_option_pnl_pct: number | null;
+  avg_thesis_pnl_pct: number | null;
+  positions: Array<{
+    idea_id: number;
+    symbol: string;
+    name: string;
+    thesis_pnl_pct: number | null;
+    option_pnl_pct: number | null;
+    exit_reason: string | null;
+    idea_reason: string | null;
+  }>;
 }
 
 export interface ReviewOut {
@@ -227,6 +250,9 @@ export interface ReviewOut {
   divergence: {
     available: boolean;
     note: string;
+    resolved_positions: number;
+    open_positions: number;
+    option_beat_thesis: number;
     thesis_right_option_won: DivergenceCell;
     thesis_right_option_lost: DivergenceCell;
     thesis_wrong_option_won: DivergenceCell;
@@ -409,7 +435,112 @@ export interface OptionAnalysis {
     filters?: Record<string, number>;
     score_weights?: Record<string, number>;
     min_return_at_target_pct?: number;
+    iv_percentile?: { percentile: number | null; days: number; min_days: number; atm_iv: number | null; note: string };
     errors?: Array<Record<string, unknown>>;
   };
   dollars_hidden: boolean;
+}
+
+// --- option positions (Phase 6) ----------------------------------------------------------------------------------
+
+export interface PositionSummary {
+  id: number;
+  name: string;
+  kind: string;
+  status: "open" | "closed";
+  exit_reason: string | null;
+  expiry: string;
+  contracts: number | null;
+  pnl_pct: number | null;
+  pnl_abs: number | null;
+  last_value: number | null;
+  last_value_as_of: string | null;
+}
+
+export interface Divergence {
+  thesis_pnl_pct: number | null;
+  option_pnl_pct: number | null;
+  thesis_right: boolean | null;
+  option_won: boolean | null;
+  option_beat_thesis: boolean | null;
+  cell: "thesis_right_option_won" | "thesis_right_option_lost" | "thesis_wrong_option_won" | "thesis_wrong_option_lost" | null;
+  resolved: boolean;
+  text: string;
+}
+
+export interface PositionLeg {
+  contract: string;
+  expiry: string;
+  strike: number;
+  right: "call" | "put";
+  side: "long" | "short";
+  qty: number;
+  entry_bid?: number | null;
+  entry_ask?: number | null;
+  entry_mid?: number | null;
+  entry_iv?: number | null;
+  entry_oi?: number | null;
+}
+
+export interface OptionSnapshotOut {
+  as_of: string;
+  value: number;
+  bid: number | null;
+  ask: number | null;
+  pnl_pct: number;
+  pnl_abs: number | null;
+  spot: number | null;
+  iv: number | null;
+  delta: number | null;
+  theta: number | null;
+  source: "chain_mid" | "expiry_intrinsic" | string;
+  legs: Array<Record<string, unknown>>;
+  created_at: string;
+}
+
+export interface PositionOut {
+  id: number;
+  idea_id: number;
+  analysis_id: number | null;
+  name: string;
+  structure: string;
+  kind: string;
+  legs: PositionLeg[];
+  expiry: string;
+  contracts: number | null;
+  entry_debit: number;
+  entry_cost: number | null;
+  entry_as_of: string;
+  entry_source: "chain_mid" | "fill" | string;
+  entry_spot: number | null;
+  take_profit_pct: number;
+  stop_loss_pct: number;
+  time_stop_days_before_expiry: number;
+  time_stop_date: string;
+  status: "open" | "closed";
+  exit_reason: string | null;
+  exit_value: number | null;
+  exit_as_of: string | null;
+  exit_source: string | null;
+  closed_at: string | null;
+  pnl_pct: number | null;
+  pnl_abs: number | null;
+  last_value: number | null;
+  last_value_as_of: string | null;
+  note: string | null;
+  snapshots: OptionSnapshotOut[];
+  dollars_hidden: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PositionTake {
+  candidate_name?: string;
+  rank?: number;
+  contracts?: number;
+  fill_price?: number;
+  take_profit_pct?: number;
+  stop_loss_pct?: number;
+  time_stop_days_before_expiry?: number;
+  note?: string;
 }

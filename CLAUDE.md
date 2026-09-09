@@ -76,9 +76,10 @@ Anthropic keys from the Radar checkout for probes only. The owner sets Vercel en
   resolver (pure decision engine), ledger (DB orchestration + serialization), radar (regime store), parser (Anthropic
   structured output -> thesis schema, EODHD symbol verification, deterministic context tile), pricing (Black-Scholes,
   Greeks, structures, breakevens, PoP, scenario grid; pure), options (chain fetch, candidates, scoring, shares
-  comparison, rationale, `option_analyses` rows);
-  `api/routers/` system/jobs/ideas/instruments/settings/review/analyses; `api/scripts/` probe_eodhd, seed_ideas,
-  probe_selector; `api/tests/` pytest (no network; in-memory SQLite via
+  comparison, rationale, `option_analyses` rows), chains (chain_snapshots storage band, ET record dates, ATM IV
+  series and the 1-year IV percentile), positions (pure exit engine, daily marks, take/close, serialization);
+  `api/routers/` system/jobs/ideas/instruments/settings/review/analyses/positions; `api/scripts/` probe_eodhd,
+  seed_ideas, probe_selector; `api/tests/` pytest (no network; in-memory SQLite via
   `JSONType = JSON().with_variant(JSONB, "postgresql")`, `TagsType` likewise).
 - `web/` Vite + React 18 + TS + Tailwind v4 (`@tailwindcss/vite`) + React Query + Lightweight Charts 5.
   Tokens live in `web/src/styles/index.css` (`@theme`): bg `#0d1117`, surface `#161b22`, surface-2 `#1c2129`,
@@ -159,8 +160,34 @@ Full write-up in `docs/options-selector.md`. The short version:
 - Rationale: `claude-sonnet-4-6` structured output from the computed numbers only; every numeric token in its text
   must round to a number in the payload (`text_uses_only_input_numbers`), otherwise a template string is used and
   `params.rationale.source` says so.
-- `iv_percentile_1y` stays null until `chain_snapshots` (Phase 6); IV versus realized stands in, labelled.
+- `iv_percentile_1y` comes from `chain_snapshots` once 20 record dates exist (`chains.IV_PERCENTILE_MIN_DAYS`); until
+  then IV versus realized stands in, labelled with the number of stored days. Every selector run stores its band.
 - Dry runs without database writes: `make probe-selector args="USO.US down --target 135 --stop 148 --days 21"`.
+
+## Option positions (api/services/positions.py + chains.py, tested in test_positions.py)
+
+Full write-up in `docs/option-positions.md`. The short version:
+
+- `POST /api/ideas/{id}/positions` (write; 409 unless options enabled, idea open and no open position; 404 without an
+  analysis) re-quotes every leg of the chosen candidate with `filter[contract]` (one request per leg), opens at the
+  structure mid or the stated `fill_price`, `contracts = floor(capital_assigned / cost)` unless given, exit rules from
+  the body (UI prefills from Settings), writes the entry-day mark and a `position_opened` event. EODHD failure = 502,
+  nothing stored. Read/edit/close/mark/delete under `/api/positions/{pid}`; dollars masked for public viewers.
+- Marks: structure at the chain mid (long legs at mid, short at mid) from `chain_snapshots` rows for the chain's
+  record date (ET date of the quote timestamps; UTC stamps lag by a day). After expiry the contracts vanish, so the
+  position settles at intrinsic from the underlying's EOD close on the last trading day at or before expiry
+  (`source = expiry_intrinsic`).
+- Exit order per mark day: idea resolution (terminal event date) → stop loss → take profit → time stop → expiry;
+  marks walked chronologically, first hit closes; a settlement mark always closes as `expiry`; manual = `manual`.
+  Closing writes `position_closed` on the idea's timeline and freezes `pnl_pct` (on premium) and `pnl_abs`
+  (contracts × 100 × (exit − entry)). The idea's own P&L is untouched (dual P&L).
+- The daily job marks positions after the ideas (`JobSummary.positions`): per instrument, one band request per right
+  (stored), per-contract requests for missing legs, one mark per position per record date (idempotent), then exits,
+  then the retention rollup (`positions.rollup`): band rows older than `chains.CHAIN_RETENTION_DAYS` (30) roll down
+  to one `chain_daily_summary` row (spot, atm_iv, realized_vol_20d, row_count) and are deleted. Every band store
+  writes that summary row up front, and the IV percentile reads only the summary, so it is unchanged by the rollup.
+- `IdeaOut.position` / `divergence` (thesis right = direction flag, option won = return on premium > 0, `cell` once
+  both resolved); Review `divergence` has the four cells with counts, averages and the positions. Placeholders excluded.
 
 ## Commands
 
@@ -217,5 +244,14 @@ _Updated at the end of every phase so a fresh or compacted session can resume._
   `vercel.json` now rewrites extension-less non-API paths to `/index.html`. Local `main` is ahead of `origin/main`
   (not pushed; the owner's call). Cosmetic leftover for Phase 6: the "Show all 0 candidates" toggle on a no-candidate
   analysis.
-- **Phase 6 (option position tracking)** follows Phase 5: `option_positions`, `option_snapshots`, `chain_snapshots`,
-  take-this-expression flow (button is present but disabled), daily marks and exit rules, dual P&L, divergence table.
+- **Phase 6 (option position tracking): built 2026-09-09, uncommitted pending owner review.** Migration `0007`
+  (rendered offline, **not yet applied to Neon**: run `make migrate` before deploying), `chains.py` (band storage from
+  every selector run and daily mark, ET record dates, ATM IV series, 1-year percentile after 20 stored days),
+  `positions.py` (pure exit engine with one test per exit reason, daily marks, expiry settlement, take/close),
+  `routers/positions.py`, Review divergence matrix, `StatsOut.option_beat_thesis`, Idea detail dual P&L + callout +
+  position panel, Expression page take flow (exit rules prefilled from Settings, optional fill, contracts), Ledger
+  Option column and expression filter, the "Show all 0 candidates" fix. 126 tests. Verified on a throwaway SQLite
+  database on `:8011` / `:5184` with the real EODHD chain (see the Phase 6 report). `docs/option-positions.md`.
+  Owner review 2026-09-09: accepted as built, plus the retention policy (migration `0008`, `chain_daily_summary`,
+  30-day band rollup in the cron; percentile reads the summary; identity test). Position deletion cascades its
+  timeline events (`resolution_events.position_id`).

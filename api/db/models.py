@@ -1,5 +1,5 @@
 """ORM models. Phase 1: `settings`, `regime_snapshots`. Phase 2: `instruments`, `ideas`, `price_snapshots`,
-`resolution_events`. Phase 5: `option_analyses`. Phase 6 adds `option_positions`, `option_snapshots`,
+`resolution_events`. Phase 5: `option_analyses`. Phase 6: `option_positions`, `option_snapshots`,
 `chain_snapshots`."""
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -33,7 +34,19 @@ DIRECTIONS = ("up", "down", "outperform", "underperform", "range")
 IDEA_TYPES = ("real", "paper")
 STATUSES = ("open", "right", "wrong", "expired", "closed_manual")
 INSTRUMENT_KINDS = ("stock", "etf", "sector_proxy", "commodity_etf", "fx_etf", "index")
-EVENT_TYPES = ("progress", "target_hit", "stop_hit", "expired", "manual_close", "benchmark_update")
+EVENT_TYPES = (
+    "progress",
+    "target_hit",
+    "stop_hit",
+    "expired",
+    "manual_close",
+    "benchmark_update",
+    "position_opened",
+    "position_closed",
+)
+POSITION_STATUSES = ("open", "closed")
+# Exit reasons in the order the position resolver applies them (api/services/positions.py).
+EXIT_REASONS = ("idea_resolved", "stop_loss", "take_profit", "time_stop", "expiry", "manual")
 
 
 class Base(DeclarativeBase):
@@ -127,6 +140,9 @@ class Idea(Base):
     analyses: Mapped[list[OptionAnalysis]] = relationship(
         back_populates="idea", cascade="all, delete-orphan", order_by="OptionAnalysis.created_at"
     )
+    positions: Mapped[list[OptionPosition]] = relationship(
+        back_populates="idea", cascade="all, delete-orphan", order_by="OptionPosition.created_at"
+    )
 
 
 class PriceSnapshot(Base):
@@ -159,6 +175,10 @@ class ResolutionEvent(Base):
     benchmark_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    # Set on position_opened / position_closed so the events go with the position when it is deleted.
+    position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("option_positions.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     idea: Mapped[Idea] = relationship(back_populates="events")
@@ -191,6 +211,149 @@ class OptionAnalysis(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     idea: Mapped[Idea] = relationship(back_populates="analyses")
+
+
+class ChainSnapshot(Base):
+    """One option contract's quote on one record date (Phase 6). Rows come from EODHD's UnicornBay `/contracts`
+    endpoint inside the storage band (120 days, +-25% of spot, widened to the idea's target and stop); the record
+    date is the ET date of the quote timestamps (`bid_date` / `ask_date`), which lag the UTC clock by one calendar
+    day after the close. `spot` is the underlying quote captured with the chain, used for the at-the-money IV series
+    behind the 1-year IV percentile. Daily marks read leg quotes from here, never from a model."""
+
+    __tablename__ = "chain_snapshots"
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "as_of", "contract", name="uq_chain_snapshots_inst_asof_contract"),
+        Index("ix_chain_snapshots_inst_asof", "instrument_id", "as_of"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), nullable=False)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    contract: Mapped[str] = mapped_column(String(48), nullable=False)
+    expiry: Mapped[date] = mapped_column(Date, nullable=False)
+    right: Mapped[str] = mapped_column(String(4), nullable=False)
+    strike: Mapped[float] = mapped_column(Float, nullable=False)
+    bid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ask: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last: Mapped[float | None] = mapped_column(Float, nullable=True)
+    iv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    theta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    oi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    spot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quote_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="contracts")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ChainDailySummary(Base):
+    """One row per (instrument, record date), written whenever a band is stored and kept indefinitely. Band rows in
+    chain_snapshots older than CHAIN_RETENTION_DAYS are rolled down to this row (spot, at-the-money IV, 20-day
+    realized vol, row count) and deleted by the daily cron. The 1-year IV percentile reads `atm_iv` from here."""
+
+    __tablename__ = "chain_daily_summary"
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "as_of", name="uq_chain_daily_summary_inst_asof"),
+        Index("ix_chain_daily_summary_inst_asof", "instrument_id", "as_of"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), nullable=False)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    spot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    atm_iv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_vol_20d: Mapped[float | None] = mapped_column(Float, nullable=True)  # percent, annualized
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    rolled_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class OptionPosition(Base):
+    """An expression taken on an idea (Phase 6): the structure's legs as quoted at entry (`legs_json` keeps each
+    leg's contract, side, strike, right, expiry and the entry bid/ask/mid), the contract count, the entry debit per
+    share (structure mid from a fresh chain quote, or the owner's stated fill), and the exit rules. Marked daily
+    from chain_snapshots; closed by the position resolver in the order idea resolution -> stop loss -> take profit
+    -> time stop -> expiry, or manually. `pnl_pct` is the return on premium; `pnl_abs` = contracts x 100 x
+    (value - entry_debit)."""
+
+    __tablename__ = "option_positions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    idea_id: Mapped[int] = mapped_column(ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    analysis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("option_analyses.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    structure: Mapped[str] = mapped_column(String(24), nullable=False)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    legs_json: Mapped[Any] = mapped_column(JSONType, nullable=False)
+    expiry: Mapped[date] = mapped_column(Date, nullable=False)
+    contracts: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_debit: Mapped[float] = mapped_column(Float, nullable=False)  # per share
+    entry_cost: Mapped[float] = mapped_column(Float, nullable=False)  # dollars: debit x 100 x contracts
+    entry_as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_source: Mapped[str] = mapped_column(String(16), nullable=False, default="chain_mid")  # chain_mid | fill
+    entry_spot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_loss_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    time_stop_days_before_expiry: Mapped[int] = mapped_column(Integer, nullable=False)
+    time_stop_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open", index=True)
+    exit_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    exit_value: Mapped[float | None] = mapped_column(Float, nullable=True)  # per share
+    exit_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
+    exit_source: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnl_abs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_value_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    idea: Mapped[Idea] = relationship(back_populates="positions")
+    snapshots: Mapped[list[OptionSnapshot]] = relationship(
+        back_populates="position", cascade="all, delete-orphan", order_by="OptionSnapshot.as_of"
+    )
+    events: Mapped[list[ResolutionEvent]] = relationship(cascade="all, delete-orphan")
+
+
+class OptionSnapshot(Base):
+    """One daily mark of a position (Phase 6): the structure's value per share from the chain (long legs at mid,
+    short legs at mid), the liquidation bid/ask, P&L on premium and in dollars, the underlying close, and the leg
+    quotes the mark was built from (`legs_json`). `source` is `chain_mid`, or `expiry_intrinsic` when the contracts
+    have expired and the settlement is the payoff at the underlying's close on the expiry date."""
+
+    __tablename__ = "option_snapshots"
+    __table_args__ = (UniqueConstraint("position_id", "as_of", name="uq_option_snapshots_position_asof"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    position_id: Mapped[int] = mapped_column(
+        ForeignKey("option_positions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    bid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ask: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnl_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    pnl_abs: Mapped[float] = mapped_column(Float, nullable=False)
+    spot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    iv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    theta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    legs_json: Mapped[Any] = mapped_column(JSONType, nullable=False)
+    source: Mapped[str] = mapped_column(String(24), nullable=False, default="chain_mid")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    position: Mapped[OptionPosition] = relationship(back_populates="snapshots")
 
 
 # Seed values for a fresh database. options_enabled is flipped in the DB (not here) once the EODHD options probe
